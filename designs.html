@@ -367,12 +367,46 @@
 <body>
   <header class="page">
     <h1>버스 위젯 · 디자인 시안</h1>
-    <p>같은 정보를 네 가지 결로 살펴봅니다. 편한 시안 하나를 정하면 앱에 반영할게요.</p>
+    <p>Aurora 방향이 채택되어, 요소를 극단적으로 덜어낸 <strong>Aurora Minimal</strong>이 앱에 적용되어 있습니다. 아래 4개는 초기 탐색 시안 기록.</p>
     <nav>
       <a href="app.html" class="primary">앱 열기 →</a>
       <a href="index.html">홈</a>
     </nav>
   </header>
+
+  <section class="grid" style="grid-template-columns: 1fr;">
+    <!-- Aurora Minimal (최종) -->
+    <article class="card" style="border: 2px solid #101318;">
+      <div class="card-head">
+        <div class="swatch-row">
+          <span class="swatch" style="background:#0b1024"></span>
+          <span class="swatch" style="background:#e51937"></span>
+          <span class="swatch" style="background:#f5f5f7"></span>
+        </div>
+        <div class="card-title">Aurora Minimal — 최종 채택</div>
+        <div class="card-sub">큰 숫자 · 게이지 위 버스 · 캡션 한 줄</div>
+      </div>
+      <div class="card-body">
+        <div class="demo" style="background:#0d1120;color:#f5f5f7;box-shadow:0 24px 60px -20px rgba(20,30,80,0.55);gap:0;padding:22px 22px 18px;">
+          <div style="font-size:42px;font-weight:200;letter-spacing:-0.03em;line-height:1;">3<span style="font-size:16px;font-weight:500;color:#6a6f80;margin:0 8px 0 3px;">분</span>12<span style="font-size:16px;font-weight:500;color:#6a6f80;margin:0 8px 0 3px;">초</span></div>
+          <div style="position:relative;margin:36px 4px 0;height:4px;border-radius:2px;background:rgba(255,255,255,0.09);">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:68%;border-radius:2px;background:linear-gradient(90deg,rgba(229,25,55,0.3),#e51937);"></div>
+            <div style="position:absolute;right:-1px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#f5f5f7;box-shadow:0 0 0 4px rgba(255,255,255,0.08);"></div>
+            <div class="bus" style="position:absolute;top:-34px;left:68%;width:46px;height:34px;margin-left:-23px;color:#e51937;filter:drop-shadow(0 8px 16px rgba(229,25,55,0.4));"></div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:14px;font-size:13px;color:#6a6f80;">
+            <span style="color:#e51937;font-weight:700;">9007</span>
+            <span>판교역</span>
+            <span style="margin-left:auto;"><b style="color:#a7adc0;">3</b> 정류장</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06);font-size:12px;color:#ff9f0a;">
+            <span>지금 나가세요</span><b>도보 5분</b>
+          </div>
+        </div>
+      </div>
+      <div class="card-desc">남은시간 큰 숫자, 노선색 게이지 바 위를 달리는 큼지막한 버스, 캡션 한 줄(노선·정류장·남은 정류장), 도보시간 설정 시에만 나타나는 출발 라인. 이 네 가지가 전부.</div>
+    </article>
+  </section>
 
   <section class="grid">
     <!-- Aurora -->

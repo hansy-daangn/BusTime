@@ -102,8 +102,8 @@
     <section class="notes">
       <h3>시작 전 체크리스트</h3>
       <ul>
-        <li>Mock 모드로 UI부터 확인 → 필요 시 서울 열린데이터광장에서 <strong>서비스 키</strong> 발급 → 앱 설정에 붙여넣기.</li>
-        <li>브라우저에서 실 API 직접 호출은 CORS로 막힐 수 있어요. 같은 폴더의 <code>python proxy.py</code>를 실행하면 자동으로 해결됩니다.</li>
+        <li>서비스 키가 <strong>내장</strong>돼 있어 열면 바로 실데이터가 나옵니다. 기본 등록: 9802 · 논현역.</li>
+        <li>브라우저가 API 직접 호출을 막으면(CORS) 같은 폴더의 <code>python proxy.py</code>를 실행하세요 — 자동 폴백으로 해결됩니다.</li>
         <li>위젯을 실제 창처럼 쓰려면 Chrome을 <code>chrome.exe --app="file:///…/app.html"</code>로 열면 주소창 없이 뜹니다.</li>
         <li>실제 프로그램(항상 위, 트레이) 은 다음 단계에서 Electron 또는 Tauri로 감쌀 예정.</li>
       </ul>

@@ -16,12 +16,23 @@
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
+import re
 import sys
 
 ALLOWED_HOSTS = {"ws.bus.go.kr"}
 DEFAULT_PORT = 8787
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """3xx 응답을 따라가지 않는다 — 리다이렉트로 화이트리스트를 우회하지 못하게."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = build_opener(_NoRedirect())
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -65,7 +76,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
         try:
             req = Request(target, headers={"User-Agent": "bus-widget-proxy/1.0"})
-            with urlopen(req, timeout=10) as res:
+            with _OPENER.open(req, timeout=10) as res:
                 body = res.read()
                 content_type = res.headers.get("Content-Type", "application/json")
             self.send_response(200)
@@ -87,7 +98,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.wfile.write(f'{{"error":"{e.reason}"}}'.encode("utf-8"))
 
     def log_message(self, fmt, *args):
-        sys.stderr.write("[proxy] " + fmt % args + "\n")
+        # 쿼리스트링(serviceKey 포함)은 로그에 남기지 않는다
+        msg = re.sub(r"\?[^\s\"]*", "?[redacted]", fmt % args)
+        sys.stderr.write("[proxy] " + msg + "\n")
 
 
 def main():
