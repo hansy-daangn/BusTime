@@ -477,14 +477,31 @@ const STATE = {
   lastUpdatedAt: null,
   refreshTimer: null,
   tickTimer: null,
+  refreshing: false,
 };
+
+/* 외부에서 온 설정(localStorage·가져오기)은 신뢰하지 않고 정규화 */
+function normalizeConfig(cfg) {
+  const c = { ...structuredClone(DEFAULTS), ...(cfg && typeof cfg === "object" ? cfg : {}) };
+  if (typeof c.busIcon !== "string" || !c.busIcon) c.busIcon = "preset-1";
+  if (!/^\d{1,2}:\d{2}$/.test(String(c.activeStart))) c.activeStart = DEFAULTS.activeStart;
+  if (!/^\d{1,2}:\d{2}$/.test(String(c.activeEnd))) c.activeEnd = DEFAULTS.activeEnd;
+  if (!Array.isArray(c.activeDays)) c.activeDays = [...DEFAULTS.activeDays];
+  c.activeDays = c.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+  if (!Array.isArray(c.watches)) c.watches = [];
+  c.watches = c.watches.filter(w => w && typeof w === "object").map(w => ({
+    ...w,
+    id: (typeof w.id === "string" && /^[\w-]+$/.test(w.id)) ? w.id : uid(),
+    color: (typeof w.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(w.color)) ? w.color : routeColor(w.routeType),
+  }));
+  return c;
+}
 
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(DEFAULTS);
-    return { ...structuredClone(DEFAULTS), ...JSON.parse(raw) };
-  } catch { return structuredClone(DEFAULTS); }
+    return normalizeConfig(raw ? JSON.parse(raw) : {});
+  } catch { return normalizeConfig({}); }
 }
 function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); }
 
@@ -526,8 +543,11 @@ const API = {
 
 function buildFetchUrl(endpoint, params) {
   const sp = new URLSearchParams({ ...params, resultType: "json" });
-  if (CONFIG.serviceKey.trim()) sp.set("serviceKey", CONFIG.serviceKey.trim());
-  const upstream = endpoint + "?" + sp.toString();
+  let qs = sp.toString();
+  const key = CONFIG.serviceKey.trim();
+  // 발급 키가 이미 URL 인코딩된 형태(% 포함)면 그대로, 아니면 인코딩해서 붙인다
+  if (key) qs += "&serviceKey=" + (key.includes("%") ? key : encodeURIComponent(key));
+  const upstream = endpoint + "?" + qs;
   if (CONFIG.mode === "proxy") {
     const p = (CONFIG.proxyUrl || "").replace(/\/$/, "");
     return `${p}/proxy?url=${encodeURIComponent(upstream)}`;
@@ -545,7 +565,8 @@ async function apiGet(endpoint, params) {
   if (header.headerCd != null && String(header.headerCd) !== "0") {
     throw new Error(String(header.headerMsg || "API 오류"));
   }
-  const body = data.msgBody || {};
+  const body = data.msgBody;
+  if (body == null) throw new Error(String(header.headerMsg || "API 응답 형식 오류"));
   let items = body.itemList;
   if (items == null) return [];
   if (!Array.isArray(items)) items = [items];
@@ -641,7 +662,9 @@ function parseArrivalItem(item, seq) {
   if (/곧\s*도착/.test(msg)) special = "arriving";
   else if (/출발\s*대기/.test(msg)) special = "wait";
   else if (/운행\s*종료/.test(msg) || (!timeField && !msg)) special = "ended";
-  const remainSec = special === "arriving" ? 0 : (Number(timeField) || null);
+  const t = Number(timeField);
+  const remainSec = special === "arriving" ? 0
+    : (timeField != null && timeField !== "" && Number.isFinite(t) ? t : null);
   const stopsMatch = msg.match(/(\d+)\s*번째\s*전/);
   const remainStops = special === "arriving" ? 0 : (stopsMatch ? Number(stopsMatch[1]) : null);
   return { remainSec, remainStops, currentLoc, isArriving, isLast, special, raw: msg };
@@ -651,15 +674,18 @@ function parseArrivalItem(item, seq) {
    활성 시간대
 ======================================================== */
 function isActiveWindow(now = new Date()) {
-  const day = now.getDay();
-  if (!CONFIG.activeDays.includes(day)) return false;
   const [sh, sm] = CONFIG.activeStart.split(":").map(Number);
   const [eh, em] = CONFIG.activeEnd.split(":").map(Number);
+  if (![sh, sm, eh, em].every(Number.isFinite)) return true; // 시간 미설정 시 항상 활성
+  const day = now.getDay();
   const cur = now.getHours() * 60 + now.getMinutes();
   const start = sh * 60 + sm, end = eh * 60 + em;
-  if (start === end) return true;
-  if (start < end) return cur >= start && cur < end;
-  return cur >= start || cur < end;
+  if (start === end) return CONFIG.activeDays.includes(day);
+  if (start < end) return CONFIG.activeDays.includes(day) && cur >= start && cur < end;
+  // 자정을 넘기는 시간대: 전날 시작한 창의 꼬리(새벽 구간)는 전날 요일 기준
+  const prevDay = (day + 6) % 7;
+  return (cur >= start && CONFIG.activeDays.includes(day))
+      || (cur < end && CONFIG.activeDays.includes(prevDay));
 }
 
 /* ========================================================
@@ -883,28 +909,34 @@ async function refreshAll(manual = false) {
   if (!CONFIG.watches.length) return;
   const active = isActiveWindow();
   if (!active && !manual) return;
+  if (STATE.refreshing) return; // 재진입 방지
+  STATE.refreshing = true;
   setStatus("loading", "업데이트 중…");
   let hadErr = false;
 
-  for (const w of CONFIG.watches) {
-    try {
-      const items = await fetchArrival(w.stId, w.busRouteId, w.ord);
-      const item = items[0];
-      if (!item) {
-        STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], stationName: w.stationName });
-        continue;
+  try {
+    await Promise.all(CONFIG.watches.map(async w => {
+      try {
+        const items = await fetchArrival(w.stId, w.busRouteId, w.ord);
+        const item = items[0];
+        if (!item) {
+          STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], stationName: w.stationName });
+          return;
+        }
+        const a0 = parseArrivalItem(item, 1);
+        const a1 = parseArrivalItem(item, 2);
+        STATE.perWatch.set(w.id, {
+          fetchedAt: Date.now(),
+          arrivals: [a0, a1].filter(a => a && (a.remainSec != null || a.special)),
+          stationName: item.stNm || w.stationName,
+        });
+      } catch (err) {
+        hadErr = true; STATE.lastError = err.message;
+        STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], error: err.message });
       }
-      const a0 = parseArrivalItem(item, 1);
-      const a1 = parseArrivalItem(item, 2);
-      STATE.perWatch.set(w.id, {
-        fetchedAt: Date.now(),
-        arrivals: [a0, a1].filter(a => a && (a.remainSec != null || a.special)),
-        stationName: item.stNm || w.stationName,
-      });
-    } catch (err) {
-      hadErr = true; STATE.lastError = err.message;
-      STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], error: err.message });
-    }
+    }));
+  } finally {
+    STATE.refreshing = false;
   }
   STATE.lastUpdatedAt = Date.now();
   setStatus(hadErr ? "error" : "ok", hadErr ? `일부 오류: ${STATE.lastError}` : (CONFIG.mode === "mock" ? "Mock · 최신" : "최신"));
@@ -931,12 +963,16 @@ function bindAutocomplete() {
   const routeInput = $("new-route");
   const stationInput = $("new-station");
 
+  let routeSearchSeq = 0;
   const searchRouteDebounced = debounce(async () => {
     const q = routeInput.value.trim();
     const box = $("sug-route");
     if (!q) { box.style.display = "none"; return; }
+    const my = ++routeSearchSeq;
     try {
       const items = await searchRoutes(q);
+      if (my !== routeSearchSeq) return;               // 더 최근 검색이 있음
+      if (document.activeElement !== routeInput) return; // 이미 포커스가 떠남
       if (!items.length) { box.innerHTML = `<div class="empty">검색 결과 없음</div>`; box.style.display=""; return; }
       box.innerHTML = "";
       for (const r of items.slice(0, 30)) {
@@ -948,6 +984,7 @@ function bindAutocomplete() {
       }
       box.style.display = "";
     } catch (err) {
+      if (my !== routeSearchSeq) return;
       box.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
       box.style.display = "";
     }
@@ -972,11 +1009,14 @@ async function selectRoute(r) {
   $("btn-add-watch").disabled = true;
   try {
     setStatus("loading", "노선 정류장 불러오는 중…");
-    state.routeStops = await fetchRouteStops(r.busRouteId);
-    setStatus("ok", `${state.routeStops.length}개 정류장`);
-    renderStationSuggest("");
+    const stops = await fetchRouteStops(r.busRouteId);
+    if (state.pickedRoute !== r) return; // 그 사이 다른 노선을 선택함
+    state.routeStops = stops;
+    setStatus("ok", `${stops.length}개 정류장`);
     $("new-station").focus();
+    renderStationSuggest("");
   } catch (err) {
+    if (state.pickedRoute !== r) return;
     setStatus("error", err.message);
     toast(err.message, true);
   }
@@ -1011,7 +1051,8 @@ function addWatch() {
   const r = state.pickedRoute, s = state.pickedStop;
   const walk = Number($("new-walk").value) || 0;
   const nick = $("new-nick").value.trim();
-  const dup = CONFIG.watches.some(w => w.busRouteId === r.busRouteId && w.stId === s.stationId);
+  const stationId = s.station || s.stationId; // 실 API는 station, mock은 stationId
+  const dup = CONFIG.watches.some(w => w.busRouteId === r.busRouteId && w.stId === stationId);
   if (dup) return toast("이미 등록된 조합이에요.", true);
   CONFIG.watches.push({
     id: uid(),
@@ -1019,7 +1060,7 @@ function addWatch() {
     routeName: r.busRouteNm,
     routeType: r.routeType,
     color: routeColor(r.routeType),
-    stId: s.stationId,
+    stId: stationId,
     arsId: s.arsId,
     stationName: s.stationNm,
     ord: Number(s.seq) || 1,
@@ -1030,6 +1071,7 @@ function addWatch() {
   state.pickedRoute = null; state.pickedStop = null; state.routeStops = [];
   $("new-route").value = ""; $("new-station").value = ""; $("new-station").disabled = true;
   $("new-nick").value = "";
+  $("new-walk").value = "300";
   $("btn-add-watch").disabled = true;
   renderWatchList();
   renderList();
@@ -1045,10 +1087,10 @@ function renderWatchList() {
     row.className = "watch-row";
     row.innerHTML = `
       <div class="info">
-        <div class="r"><span class="swatch" style="background:${w.color}"></span>${escapeHtml(w.routeName)} <span style="color:var(--text-mute);font-weight:400">· ${escapeHtml(w.stationName)}</span></div>
+        <div class="r"><span class="swatch" style="background:${escapeHtml(w.color)}"></span>${escapeHtml(w.routeName)} <span style="color:var(--text-mute);font-weight:400">· ${escapeHtml(w.stationName)}</span></div>
         <div class="s">${escapeHtml(w.nickname || "")} · 도보 ${fmtTime(w.walkSeconds || 0)}</div>
       </div>
-      <button class="secondary-btn danger" data-id="${w.id}">삭제</button>`;
+      <button class="secondary-btn danger" data-id="${escapeHtml(w.id)}">삭제</button>`;
     row.querySelector("button").onclick = () => {
       CONFIG.watches = CONFIG.watches.filter(x => x.id !== w.id);
       STATE.perWatch.delete(w.id);
@@ -1065,7 +1107,7 @@ function renderIconGallery() {
   const el = $("icon-gallery");
   el.innerHTML = "";
   const items = [...Object.keys(BUS_ICONS)];
-  if (CONFIG.busIcon.startsWith("data:")) items.push(CONFIG.busIcon);
+  if ((CONFIG.busIcon || "").startsWith("data:")) items.push(CONFIG.busIcon);
   for (const key of items) {
     const cell = document.createElement("button");
     cell.className = "icon-cell" + (CONFIG.busIcon === key ? " active" : "");
@@ -1149,7 +1191,11 @@ function bindEvents() {
   $("input-key").oninput = e => { CONFIG.serviceKey = e.target.value; save(); };
   $("input-start").onchange = e => { CONFIG.activeStart = e.target.value; save(); updateActiveBadge(); };
   $("input-end").onchange = e => { CONFIG.activeEnd = e.target.value; save(); updateActiveBadge(); };
-  $("input-refresh").onchange = e => { CONFIG.refreshSeconds = Math.max(10, Number(e.target.value) || 30); save(); scheduleTimers(); };
+  $("input-refresh").onchange = e => {
+    CONFIG.refreshSeconds = Math.max(10, Number(e.target.value) || 30);
+    e.target.value = CONFIG.refreshSeconds;
+    save(); scheduleTimers();
+  };
   $("input-corner").onchange = e => { CONFIG.corner = e.target.value; $("app").className = e.target.value; save(); };
 
   $("btn-add-watch").onclick = addWatch;
@@ -1166,9 +1212,7 @@ function bindEvents() {
     input.onchange = async () => {
       const f = input.files[0]; if (!f) return;
       try {
-        const parsed = JSON.parse(await f.text());
-        CONFIG = { ...structuredClone(DEFAULTS), ...parsed };
-        if (!Array.isArray(CONFIG.watches)) CONFIG.watches = [];
+        CONFIG = normalizeConfig(JSON.parse(await f.text()));
         save(); syncSettingsUI(); renderList(); scheduleTimers();
         toast("가져왔어요."); refreshAll(true);
       } catch { toast("파일을 읽을 수 없어요.", true); }
