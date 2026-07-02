@@ -1,0 +1,1342 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>버스 도착 위젯</title>
+<style>
+  /* ----- 테마: Aurora (기본) ----- */
+  :root {
+    --bg: rgba(10, 14, 26, 0.86);
+    --bg-solid: #0a0e1a;
+    --panel: rgba(255, 255, 255, 0.04);
+    --panel-strong: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --text: #f2f4fb;
+    --text-dim: #a7adc0;
+    --text-mute: #6a6f80;
+    --accent: #7ec4ff;
+    --accent-strong: #4aa3ff;
+    --warn: #ffd166;
+    --danger: #ff6b6b;
+    --success: #7dd67d;
+    --track: rgba(255, 255, 255, 0.08);
+    --shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent; color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 오버레이 컨테이너 */
+  #app {
+    position: fixed;
+    top: 12px; right: 12px;
+    width: 360px;
+    max-height: calc(100vh - 24px);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #app.corner-tl { top: 12px; left: 12px; right: auto; }
+  #app.corner-tr { top: 12px; right: 12px; left: auto; }
+  #app.corner-bl { bottom: 12px; left: 12px; top: auto; right: auto; }
+  #app.corner-br { bottom: 12px; right: 12px; top: auto; left: auto; }
+
+  /* ---------- 헤더 ---------- */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+  .title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+  .title .icon { font-size: 16px; }
+  .badge {
+    padding: 2px 8px; border-radius: 999px; font-size: 10px;
+    background: rgba(126, 196, 255, 0.14); color: var(--accent);
+    letter-spacing: 0.02em;
+  }
+  .badge.off { background: rgba(255,255,255,0.06); color: var(--text-mute); }
+  .actions { display: flex; gap: 2px; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: transparent; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .12s, color .12s;
+  }
+  .icon-btn:hover { background: var(--panel); color: var(--text); }
+  .icon-btn.active { background: rgba(126,196,255,0.16); color: var(--accent); }
+
+  /* ---------- 본문 스크롤 ---------- */
+  .body { flex: 1 1 auto; overflow-y: auto; padding: 10px 12px 4px; }
+  .body::-webkit-scrollbar { width: 6px; }
+  .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 3px; }
+
+  /* ---------- 페이지 ---------- */
+  .page > h2 {
+    margin: 12px 4px 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; padding: 4px 4px; position: relative; }
+  .field label { font-size: 11px; color: var(--text-dim); }
+  .field input, .field select, .field textarea {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 10px; border-radius: 8px; font-size: 12px; font-family: inherit; outline: none;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field-row { display: flex; gap: 8px; }
+  .field-row > .field { flex: 1; }
+  .help-text { font-size: 10px; color: var(--text-mute); line-height: 1.5; padding: 2px 4px 0; }
+  .help-text a { color: var(--accent); }
+
+  .primary-btn {
+    display: block; width: 100%; padding: 9px 10px; margin: 8px 0 4px;
+    background: var(--accent-strong); color: white; border: none; border-radius: 8px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .primary-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .secondary-btn {
+    padding: 6px 10px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font-size: 11px; cursor: pointer;
+  }
+  .secondary-btn:hover { background: var(--panel-strong); }
+  .danger { color: var(--danger); }
+
+  /* ---------- 자동완성 ---------- */
+  .suggest {
+    position: absolute; z-index: 20; top: 100%; left: 0; right: 0;
+    background: var(--bg-solid); border: 1px solid var(--border-strong);
+    border-radius: 8px; margin-top: 4px; max-height: 220px; overflow-y: auto;
+    box-shadow: var(--shadow);
+  }
+  .suggest button {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 10px; background: transparent; border: none; color: var(--text);
+    font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border);
+  }
+  .suggest button:last-child { border-bottom: none; }
+  .suggest button:hover, .suggest button.hover { background: var(--panel-strong); }
+  .suggest .meta { color: var(--text-mute); font-size: 10px; margin-top: 2px; }
+  .suggest .empty { padding: 12px; color: var(--text-mute); font-size: 11px; text-align: center; }
+
+  /* ---------- 위젯 카드 ---------- */
+  .bus-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 4px; }
+
+  .bus-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .18s, background .18s;
+  }
+  .bus-card::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--route-color, var(--accent));
+    opacity: 0.9;
+  }
+  .bus-card.urgent { border-color: color-mix(in oklab, var(--route-color) 45%, transparent); background: color-mix(in oklab, var(--route-color) 8%, var(--panel)); }
+  .bus-card.arriving { animation: pulse 1.6s infinite; }
+  .bus-card.ended { opacity: 0.55; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--route-color) 35%, transparent); }
+    50%    { box-shadow: 0 0 0 6px transparent; }
+  }
+
+  .card-top {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .route-name {
+    font-size: 20px; font-weight: 800; letter-spacing: 0.01em;
+    color: var(--route-color, var(--text));
+  }
+  .route-type {
+    font-size: 10px; color: var(--text-mute); padding: 2px 6px;
+    border: 1px solid var(--border); border-radius: 999px;
+  }
+  .card-meta { color: var(--text-mute); font-size: 11px; }
+  .card-meta strong { color: var(--text-dim); font-weight: 600; }
+
+  /* ---------- 트랙 시각화 ---------- */
+  .track-wrap {
+    margin: 10px 0 8px;
+    padding: 8px 8px 6px;
+    background: rgba(0,0,0,0.15);
+    border-radius: 10px;
+    position: relative;
+  }
+  .track {
+    position: relative;
+    height: 44px;
+  }
+  .track-line {
+    position: absolute; left: 8px; right: 40px; top: 50%;
+    height: 2px; background: var(--track);
+    transform: translateY(-50%);
+    border-radius: 2px;
+  }
+  .track-dot {
+    position: absolute; top: 50%;
+    width: 16px; height: 16px; margin: -8px 0 0 -8px;
+    border-radius: 50%; background: transparent;
+    border: 2px solid var(--route-color, var(--accent));
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.2) inset;
+    opacity: 0.55;
+    transition: opacity .3s, transform .3s;
+  }
+  .track-dot.active { opacity: 1; transform: translate(0,0) scale(1.08); }
+  .track-station {
+    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%;
+    background: color-mix(in oklab, var(--route-color) 15%, transparent);
+    color: var(--route-color, var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    border: 1px solid color-mix(in oklab, var(--route-color) 40%, transparent);
+  }
+  .track-bus {
+    position: absolute; top: 50%;
+    width: 34px; height: 34px; margin: -17px 0 0 -17px;
+    transition: left .8s cubic-bezier(.34,.72,.32,1);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+    color: var(--route-color, var(--accent));
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35));
+  }
+  .track-bus svg, .track-bus img { width: 100%; height: 100%; display: block; }
+  .track-bus.off-track {
+    left: -8px;
+  }
+  .track-bus.off-track::after {
+    content: attr(data-far);
+    position: absolute; left: 34px; top: 50%; transform: translateY(-50%);
+    font-size: 10px; color: var(--text-mute); white-space: nowrap;
+  }
+
+  /* ---------- 주요 숫자 ---------- */
+  .card-arrival {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; margin-top: 4px;
+  }
+  .arrival-time {
+    font-size: 24px; font-weight: 800; letter-spacing: -0.01em;
+    color: var(--route-color, var(--accent));
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .arrival-time.warn { color: var(--warn); }
+  .arrival-time.hot { color: var(--danger); }
+  .arrival-time.muted { color: var(--text-mute); font-size: 16px; font-weight: 600; }
+  .arrival-stops {
+    text-align: right;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .arrival-stops strong { color: var(--text); font-weight: 700; }
+  .arrival-sub { color: var(--text-mute); font-size: 10px; margin-top: 4px; }
+  .arrival-here { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+
+  /* ---------- 나가기 타이머 ---------- */
+  .leave {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 10px; padding: 8px 10px;
+    background: var(--panel-strong);
+    border-radius: 10px;
+    font-size: 11px; color: var(--text-dim);
+    gap: 8px;
+  }
+  .leave .label { display: flex; align-items: center; gap: 6px; }
+  .leave .value { font-weight: 700; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .leave.go .value, .leave.go .label { color: var(--warn); }
+  .leave.now { background: rgba(255,107,107,0.14); border: 1px solid rgba(255,107,107,0.35); }
+  .leave.now .label, .leave.now .value { color: var(--danger); }
+  .leave.now .value { font-size: 14px; }
+  .leave.missed .value { color: var(--text-mute); }
+  .leave.na { opacity: 0.6; }
+
+  /* ---------- 다음버스 ---------- */
+  .card-next {
+    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
+    display: flex; justify-content: space-between; font-size: 11px; color: var(--text-mute);
+  }
+
+  /* ---------- 비어있음 ---------- */
+  .empty {
+    padding: 30px 20px; text-align: center; color: var(--text-mute);
+    font-size: 12px; line-height: 1.6;
+  }
+  .empty button {
+    margin-top: 12px; background: var(--accent-strong); color: white;
+    border: none; padding: 8px 14px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  }
+
+  /* ---------- 상태 바 ---------- */
+  .status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--text-mute);
+  }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-mute); margin-right: 4px; vertical-align: 1px; }
+  .dot.on { background: var(--success); box-shadow: 0 0 0 3px rgba(125,214,125,0.15); }
+  .dot.err { background: var(--danger); }
+
+  /* ---------- 등록된 목록 ---------- */
+  .watch-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .watch-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  }
+  .watch-row .info .r { font-weight: 700; font-size: 12px; color: var(--text); }
+  .watch-row .info .s { font-size: 10px; color: var(--text-mute); }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+  /* ---------- 도움말 ---------- */
+  .help-block {
+    padding: 10px 12px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; margin: 6px 4px; font-size: 11px; line-height: 1.6; color: var(--text-dim);
+  }
+  .help-block strong { color: var(--text); }
+  .help-block ol, .help-block ul { padding-left: 18px; margin: 6px 0; }
+  .help-block code {
+    background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px;
+    font-size: 10px; font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .help-block pre {
+    background: rgba(0,0,0,0.35); padding: 8px; border-radius: 6px;
+    font-size: 10px; overflow-x: auto; margin: 6px 0;
+  }
+  .help-block a { color: var(--accent); }
+
+  /* ---------- 버스 아이콘 갤러리 ---------- */
+  .icon-gallery {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px;
+  }
+  .icon-cell {
+    aspect-ratio: 1;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--text-dim);
+  }
+  .icon-cell:hover { background: var(--panel-strong); }
+  .icon-cell.active { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 15%, var(--panel)); color: var(--accent); }
+  .icon-cell svg, .icon-cell img { width: 60%; height: 60%; }
+
+  /* ---------- 요일 버튼 ---------- */
+  .days { display: flex; gap: 4px; flex-wrap: wrap; }
+  .day-btn {
+    flex: 1; padding: 5px 0; text-align: center;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    font-size: 11px; color: var(--text-mute); cursor: pointer;
+  }
+  .day-btn.on {
+    background: color-mix(in oklab, var(--accent) 18%, var(--panel));
+    color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  }
+
+  /* ---------- 토스트 ---------- */
+  .toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-solid); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 999px; font-size: 11px; box-shadow: var(--shadow);
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+  .toast.err { border-color: rgba(255,107,107,0.5); }
+</style>
+</head>
+<body>
+  <div id="app" class="corner-tr">
+    <div class="header">
+      <div class="title">
+        <span class="icon">🚌</span>
+        <span>버스 도착</span>
+        <span id="active-badge" class="badge">활성</span>
+      </div>
+      <div class="actions">
+        <button id="btn-refresh" class="icon-btn" title="새로고침">🔄</button>
+        <button id="btn-list" class="icon-btn active" title="목록">📋</button>
+        <button id="btn-settings" class="icon-btn" title="설정">⚙️</button>
+        <button id="btn-help" class="icon-btn" title="도움말">❔</button>
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- 위젯 목록 -->
+      <div id="page-list" class="page">
+        <div id="bus-list" class="bus-list"></div>
+      </div>
+
+      <!-- 설정 -->
+      <div id="page-settings" class="page" style="display:none">
+        <h2>데이터 모드</h2>
+        <div class="field">
+          <select id="input-mode">
+            <option value="mock">Mock (가짜 데이터)</option>
+            <option value="direct">실 API 직접 호출 (CORS 이슈 가능)</option>
+            <option value="proxy">로컬 프록시 (권장 · CORS 해결)</option>
+          </select>
+        </div>
+        <div id="proxy-field" class="field" style="display:none">
+          <label>프록시 URL</label>
+          <input id="input-proxy" placeholder="http://localhost:8787" />
+          <div class="help-text"><code>proxy.py</code>를 실행하면 <code>http://localhost:8787</code>로 뜹니다.</div>
+        </div>
+        <div class="field">
+          <label>서비스 키 (Encoding Key)</label>
+          <input id="input-key" placeholder="서울시 열린데이터광장에서 발급받은 키" />
+          <div class="help-text">Mock 모드에선 필요 없어요. <a href="#" id="link-help">발급 방법</a></div>
+        </div>
+
+        <h2>활성 시간대</h2>
+        <div class="field-row">
+          <div class="field"><label>시작</label><input id="input-start" type="time" /></div>
+          <div class="field"><label>종료</label><input id="input-end" type="time" /></div>
+        </div>
+        <div class="field">
+          <label>자동 새로고침 (초, 활성 시간대만)</label>
+          <input id="input-refresh" type="number" min="10" max="600" step="5" />
+        </div>
+        <div class="field">
+          <label>요일</label>
+          <div id="input-days" class="days"></div>
+        </div>
+
+        <h2>위젯</h2>
+        <div class="field">
+          <label>위치</label>
+          <select id="input-corner">
+            <option value="corner-tl">좌측 상단</option>
+            <option value="corner-tr" selected>우측 상단</option>
+            <option value="corner-bl">좌측 하단</option>
+            <option value="corner-br">우측 하단</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>버스 아이콘</label>
+          <div id="icon-gallery" class="icon-gallery"></div>
+          <div class="field-row" style="margin-top:6px">
+            <button id="btn-upload-icon" class="secondary-btn" style="flex:1">이미지 업로드</button>
+            <button id="btn-reset-icon" class="secondary-btn" style="flex:1">기본으로</button>
+          </div>
+          <input id="input-icon-file" type="file" accept="image/*" style="display:none" />
+        </div>
+
+        <h2>버스 추가</h2>
+        <div class="field">
+          <label>1) 노선번호 (검색 후 선택)</label>
+          <input id="new-route" placeholder="예: 9007" autocomplete="off" />
+          <div id="sug-route" class="suggest" style="display:none"></div>
+        </div>
+        <div class="field">
+          <label>2) 정류장 (선택한 노선 상에서 검색)</label>
+          <input id="new-station" placeholder="정류장명 일부" autocomplete="off" disabled />
+          <div id="sug-station" class="suggest" style="display:none"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>사무실→정류장 도보 (초)</label>
+            <input id="new-walk" type="number" min="0" step="10" value="300" />
+          </div>
+          <div class="field">
+            <label>별명 (선택)</label>
+            <input id="new-nick" placeholder="예: 출근" />
+          </div>
+        </div>
+        <button id="btn-add-watch" class="primary-btn" disabled>추가</button>
+
+        <div id="watch-list" class="watch-list"></div>
+
+        <h2>내보내기 / 가져오기</h2>
+        <div class="field-row">
+          <button id="btn-export" class="secondary-btn" style="flex:1">설정 내보내기</button>
+          <button id="btn-import" class="secondary-btn" style="flex:1">가져오기</button>
+        </div>
+      </div>
+
+      <!-- 도움말 -->
+      <div id="page-help" class="page" style="display:none">
+        <h2>1. 서비스 키 발급</h2>
+        <div class="help-block">
+          <ol>
+            <li><a href="https://data.seoul.go.kr" target="_blank">서울 열린데이터 광장</a> 로그인</li>
+            <li>검색: <strong>"버스도착정보"</strong> → 서비스 상세에서 인증키 신청</li>
+            <li>승인 즉시. 마이페이지에서 <strong>Encoding Key</strong> 복사 → 설정에 붙여넣기</li>
+          </ol>
+          <div class="help-text">위 노선/정류장 검색도 같은 키를 씁니다.</div>
+        </div>
+
+        <h2>2. CORS 우회 · 로컬 프록시</h2>
+        <div class="help-block">
+          같이 있는 파일을 한 번만 실행하면 됩니다.
+          <pre>python proxy.py</pre>
+          설정에서 데이터 모드를 <strong>로컬 프록시</strong>로.
+        </div>
+
+        <h2>3. 창을 위젯처럼 띄우기</h2>
+        <div class="help-block">
+          <strong>Chrome 앱 모드</strong>:
+          <pre>chrome.exe --app="file:///C:/경로/app.html"</pre>
+          창 크기 380×620 정도로 줄이고 원하는 모서리에 배치.
+          <br />항상 위 기능은 다음 단계(Electron/Tauri)에서.
+        </div>
+
+        <h2>4. API</h2>
+        <div class="help-block">
+          <div style="display:flex;justify-content:space-between"><span>노선검색</span><code>busRouteInfo/getBusRouteList</code></div>
+          <div style="display:flex;justify-content:space-between"><span>노선 정류장</span><code>busRouteInfo/getStaionByRoute</code></div>
+          <div style="display:flex;justify-content:space-between"><span>정류장 검색</span><code>stationinfo/getStationByName</code></div>
+          <div style="display:flex;justify-content:space-between"><span>도착정보</span><code>arrive/getArrInfoByRoute</code></div>
+          <div style="display:flex;justify-content:space-between"><span>버스위치</span><code>buspos/getBusPosByRtid</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div><span id="status-dot" class="dot"></span><span id="status-text">준비 중</span></div>
+      <div id="status-updated"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+
+/* ========================================================
+   저장 / 상태
+======================================================== */
+const STORAGE_KEY = "bus-widget:v2";
+
+const DEFAULTS = {
+  mode: "mock",
+  serviceKey: "",
+  proxyUrl: "http://localhost:8787",
+  activeStart: "07:30",
+  activeEnd: "09:30",
+  activeDays: [1, 2, 3, 4, 5],
+  refreshSeconds: 30,
+  corner: "corner-tr",
+  busIcon: "preset-1",       // preset-1..4, or a data URL
+  watches: [],
+};
+
+let CONFIG = load();
+const STATE = {
+  perWatch: new Map(),   // watchId -> { fetchedAt, arrivals:[{remainSec, remainStops, currentLoc, isArriving, isLast}], stationName }
+  lastError: null,
+  lastUpdatedAt: null,
+  refreshTimer: null,
+  tickTimer: null,
+};
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return structuredClone(DEFAULTS);
+    return { ...structuredClone(DEFAULTS), ...JSON.parse(raw) };
+  } catch { return structuredClone(DEFAULTS); }
+}
+function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); }
+
+/* ========================================================
+   유틸
+======================================================== */
+const $ = id => document.getElementById(id);
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, ch => (
+  {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const uid = () => (crypto && crypto.randomUUID) ? crypto.randomUUID() : "id-" + Math.random().toString(36).slice(2, 10);
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+function fmtTime(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m === 0) return `${s}초`;
+  if (s === 0) return `${m}분`;
+  return `${m}분 ${String(s).padStart(2, "0")}초`;
+}
+function fmtSigned(sec) {
+  const sign = sec < 0 ? "-" : "";
+  return sign + fmtTime(Math.abs(sec));
+}
+
+/* ========================================================
+   서울시 API
+======================================================== */
+const API_BASE = "http://ws.bus.go.kr/api/rest";
+const API = {
+  routeList:   `${API_BASE}/busRouteInfo/getBusRouteList`,
+  routeStops:  `${API_BASE}/busRouteInfo/getStaionByRoute`,
+  stationByName: `${API_BASE}/stationinfo/getStationByName`,
+  arrivalByRoute: `${API_BASE}/arrive/getArrInfoByRoute`,
+  busPos:      `${API_BASE}/buspos/getBusPosByRtid`,
+};
+
+function buildFetchUrl(endpoint, params) {
+  const sp = new URLSearchParams({ ...params, resultType: "json" });
+  if (CONFIG.serviceKey.trim()) sp.set("serviceKey", CONFIG.serviceKey.trim());
+  const upstream = endpoint + "?" + sp.toString();
+  if (CONFIG.mode === "proxy") {
+    const p = (CONFIG.proxyUrl || "").replace(/\/$/, "");
+    return `${p}/proxy?url=${encodeURIComponent(upstream)}`;
+  }
+  return upstream;
+}
+async function apiGet(endpoint, params) {
+  if (CONFIG.mode === "mock") return null; // 호출자 처리
+  if (!CONFIG.serviceKey.trim()) throw new Error("서비스 키가 없어요.");
+  const url = buildFetchUrl(endpoint, params);
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const header = data.msgHeader || data.MsgHeader || {};
+  if (header.headerCd != null && String(header.headerCd) !== "0") {
+    throw new Error(String(header.headerMsg || "API 오류"));
+  }
+  const body = data.msgBody || {};
+  let items = body.itemList;
+  if (items == null) return [];
+  if (!Array.isArray(items)) items = [items];
+  return items;
+}
+
+/* ========================================================
+   자동완성: 노선/정류장
+======================================================== */
+async function searchRoutes(query) {
+  if (CONFIG.mode === "mock") return mockRoutes(query);
+  return apiGet(API.routeList, { strSrch: query });
+}
+async function fetchRouteStops(busRouteId) {
+  if (CONFIG.mode === "mock") return mockRouteStops(busRouteId);
+  return apiGet(API.routeStops, { busRouteId });
+}
+async function fetchArrival(stId, busRouteId, ord) {
+  if (CONFIG.mode === "mock") return mockArrival(stId, busRouteId, ord);
+  return apiGet(API.arrivalByRoute, { stId, busRouteId, ord });
+}
+
+/* ========================================================
+   Mock 데이터
+======================================================== */
+const MOCK_ROUTES = [
+  { busRouteId: "100100118", busRouteNm: "9007",  routeType: "6", firstBusTm: "0430", lastBusTm: "0100" },
+  { busRouteId: "100100223", busRouteNm: "9707",  routeType: "6", firstBusTm: "0500", lastBusTm: "2300" },
+  { busRouteId: "100100442", busRouteNm: "7212",  routeType: "3", firstBusTm: "0430", lastBusTm: "2400" },
+  { busRouteId: "100100501", busRouteNm: "146",   routeType: "3", firstBusTm: "0430", lastBusTm: "0000" },
+  { busRouteId: "100100612", busRouteNm: "1005",  routeType: "6", firstBusTm: "0500", lastBusTm: "2300" },
+  { busRouteId: "100100999", busRouteNm: "3412",  routeType: "4", firstBusTm: "0500", lastBusTm: "2300" },
+];
+const MOCK_STOPS_BY_ROUTE = new Map(MOCK_ROUTES.map(r => [r.busRouteId, [
+  { stationId: "113000138", stationNm: "판교역",          arsId: "23001", seq: "1"  },
+  { stationId: "113000201", stationNm: "판교테크노밸리",   arsId: "23011", seq: "2"  },
+  { stationId: "113000345", stationNm: "정자역",          arsId: "23099", seq: "3"  },
+  { stationId: "113000517", stationNm: "미금역",          arsId: "23150", seq: "4"  },
+  { stationId: "113000700", stationNm: "성남시청",         arsId: "24001", seq: "5"  },
+  { stationId: "113000850", stationNm: "복정역",          arsId: "24099", seq: "6"  },
+  { stationId: "113001100", stationNm: "가락시장",         arsId: "24444", seq: "7"  },
+  { stationId: "113001300", stationNm: "잠실역",          arsId: "25555", seq: "8"  },
+  { stationId: "113001500", stationNm: "강남역",          arsId: "23133", seq: "9"  },
+  { stationId: "113001700", stationNm: "역삼역",          arsId: "23155", seq: "10" },
+]]));
+function mockRoutes(q) {
+  const s = String(q || "").toLowerCase();
+  return MOCK_ROUTES.filter(r => r.busRouteNm.toLowerCase().includes(s));
+}
+function mockRouteStops(busRouteId) {
+  return MOCK_STOPS_BY_ROUTE.get(busRouteId) || [];
+}
+const MOCK_ARR = new Map();
+function mockArrival(stId, busRouteId, ord) {
+  const key = `${stId}:${busRouteId}`;
+  if (!MOCK_ARR.has(key)) MOCK_ARR.set(key, Math.floor(Math.random() * 480) + 60);
+  let t1 = MOCK_ARR.get(key);
+  t1 = Math.max(0, t1 - Math.floor(Math.random() * 30 + 20));
+  if (t1 <= 0) t1 = Math.floor(Math.random() * 600) + 60;
+  MOCK_ARR.set(key, t1);
+  const t2 = t1 + Math.floor(Math.random() * 500) + 180;
+  const stops1 = clamp(Math.round(t1 / 60), 1, 8);
+  const stops2 = clamp(Math.round(t2 / 60), stops1 + 1, 12);
+  const stopNames = ["역삼역", "선릉역", "삼성역", "잠실역", "복정역", "성남시청", "미금역", "정자역", "판교역"];
+  const cur1 = stopNames[Math.min(stops1 - 1, stopNames.length - 1)];
+  const cur2 = stopNames[Math.min(stops2 - 1, stopNames.length - 1)];
+  return [{
+    stNm: "가상정류장",
+    arsId: "23001",
+    rtNm: "임의",
+    busRouteId,
+    arrmsg1: t1 < 30 ? "곧 도착" : `${Math.floor(t1/60)}분${t1%60}초후[${stops1}번째 전]`,
+    arrmsg2: `${Math.floor(t2/60)}분${t2%60}초후[${stops2}번째 전]`,
+    traTime1: String(t1),
+    traTime2: String(t2),
+    stationNm1: cur1,
+    stationNm2: cur2,
+    isArrive1: t1 < 30 ? "1" : "0",
+    isLast1: "0",
+  }];
+}
+
+/* ========================================================
+   응답 파싱
+======================================================== */
+function parseArrivalItem(item, seq) {
+  const timeField = item[`traTime${seq}`];
+  const msg = item[`arrmsg${seq}`] || "";
+  const currentLoc = item[`stationNm${seq}`] || "";
+  const isArriving = item[`isArrive${seq}`] === "1";
+  const isLast = item[`isLast${seq}`] === "1";
+  let special = null;
+  if (/곧\s*도착/.test(msg)) special = "arriving";
+  else if (/출발\s*대기/.test(msg)) special = "wait";
+  else if (/운행\s*종료/.test(msg) || (!timeField && !msg)) special = "ended";
+  const remainSec = special === "arriving" ? 0 : (Number(timeField) || null);
+  const stopsMatch = msg.match(/(\d+)\s*번째\s*전/);
+  const remainStops = special === "arriving" ? 0 : (stopsMatch ? Number(stopsMatch[1]) : null);
+  return { remainSec, remainStops, currentLoc, isArriving, isLast, special, raw: msg };
+}
+
+/* ========================================================
+   활성 시간대
+======================================================== */
+function isActiveWindow(now = new Date()) {
+  const day = now.getDay();
+  if (!CONFIG.activeDays.includes(day)) return false;
+  const [sh, sm] = CONFIG.activeStart.split(":").map(Number);
+  const [eh, em] = CONFIG.activeEnd.split(":").map(Number);
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const start = sh * 60 + sm, end = eh * 60 + em;
+  if (start === end) return true;
+  if (start < end) return cur >= start && cur < end;
+  return cur >= start || cur < end;
+}
+
+/* ========================================================
+   노선 색상
+======================================================== */
+const ROUTE_COLORS = {
+  "1": "#3d5bab",  // 공항
+  "2": "#f99d1c",  // 마을
+  "3": "#3d5bab",  // 간선
+  "4": "#5bb531",  // 지선
+  "5": "#f99d1c",  // 순환
+  "6": "#e51937",  // 광역
+  "7": "#3d5bab",  // 인천
+  "8": "#e51937",  // 경기
+  "9": "#f99d1c",
+  "11": "#26262f", // 심야
+  "13": "#5bb531",
+};
+const ROUTE_TYPE_LABEL = {
+  "1": "공항", "2": "마을", "3": "간선", "4": "지선", "5": "순환",
+  "6": "광역", "7": "인천", "8": "경기", "9": "순환", "11": "심야", "13": "지선",
+};
+function routeColor(t) { return ROUTE_COLORS[String(t)] || "#7ec4ff"; }
+
+/* ========================================================
+   버스 아이콘 프리셋 (SVG)
+======================================================== */
+const BUS_ICONS = {
+  "preset-1": `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="10" width="28" height="18" rx="4" fill="currentColor"/>
+    <rect x="9" y="13" width="9" height="7" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <rect x="21" y="13" width="9" height="7" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <rect x="9" y="22" width="21" height="3" rx="1" fill="rgba(0,0,0,0.25)"/>
+    <circle cx="12" cy="30" r="3" fill="#222"/><circle cx="12" cy="30" r="1.3" fill="#eee"/>
+    <circle cx="28" cy="30" r="3" fill="#222"/><circle cx="28" cy="30" r="1.3" fill="#eee"/>
+  </svg>`,
+  "preset-2": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 12 L32 12 Q36 12 36 16 L36 26 Q36 30 32 30 L8 30 Q4 30 4 26 L4 16 Q4 12 8 12 Z" fill="currentColor"/>
+    <rect x="7" y="15" width="26" height="6" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <circle cx="12" cy="30" r="3" fill="#111"/>
+    <circle cx="28" cy="30" r="3" fill="#111"/>
+    <rect x="7" y="24" width="4" height="2" fill="rgba(255,255,255,0.35)"/>
+    <rect x="29" y="24" width="4" height="2" fill="rgba(255,255,255,0.35)"/>
+  </svg>`,
+  "preset-3": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="8" width="32" height="22" rx="6" fill="currentColor"/>
+    <rect x="8" y="12" width="24" height="8" rx="2" fill="rgba(255,255,255,0.85)"/>
+    <rect x="8" y="22" width="24" height="2" fill="rgba(0,0,0,0.28)"/>
+    <circle cx="11" cy="32" r="2.5" fill="#111"/>
+    <circle cx="29" cy="32" r="2.5" fill="#111"/>
+  </svg>`,
+  "preset-4": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5" y="14" width="30" height="14" rx="3" fill="currentColor"/>
+    <rect x="8" y="16" width="10" height="6" fill="rgba(255,255,255,0.85)"/>
+    <rect x="20" y="16" width="12" height="6" fill="rgba(255,255,255,0.85)"/>
+    <rect x="5" y="26" width="30" height="1.5" fill="rgba(0,0,0,0.3)"/>
+    <circle cx="12" cy="30" r="2" fill="#111"/>
+    <circle cx="28" cy="30" r="2" fill="#111"/>
+  </svg>`,
+};
+
+function busIconHtml() {
+  const v = CONFIG.busIcon || "preset-1";
+  if (v.startsWith("data:")) return `<img alt="bus" src="${escapeHtml(v)}" />`;
+  return BUS_ICONS[v] || BUS_ICONS["preset-1"];
+}
+
+/* ========================================================
+   페이지 전환
+======================================================== */
+const PAGES = ["list", "settings", "help"];
+function showPage(name) {
+  for (const p of PAGES) {
+    $("page-" + p).style.display = (p === name) ? "" : "none";
+    $("btn-" + p).classList.toggle("active", p === name);
+  }
+}
+
+/* ========================================================
+   상태바
+======================================================== */
+function setStatus(kind, text) {
+  const dot = $("status-dot");
+  dot.classList.remove("on", "err");
+  if (kind === "ok" || kind === "loading") dot.classList.add("on");
+  if (kind === "error") dot.classList.add("err");
+  $("status-text").textContent = text;
+  updateActiveBadge();
+}
+function updateActiveBadge() {
+  const badge = $("active-badge");
+  const active = isActiveWindow();
+  badge.textContent = active
+    ? `활성 · ${CONFIG.activeStart}–${CONFIG.activeEnd}`
+    : `대기 · ${CONFIG.activeStart}–${CONFIG.activeEnd}`;
+  badge.classList.toggle("off", !active);
+}
+function updateUpdatedText() {
+  const el = $("status-updated");
+  if (!STATE.lastUpdatedAt) { el.textContent = ""; return; }
+  const sec = Math.round((Date.now() - STATE.lastUpdatedAt) / 1000);
+  el.textContent = sec < 5 ? "방금" : `${sec}초 전`;
+}
+
+/* ========================================================
+   버스 카드 렌더
+======================================================== */
+function renderList() {
+  const list = $("bus-list");
+  list.innerHTML = "";
+  if (!CONFIG.watches.length) {
+    list.innerHTML = `
+      <div class="empty">
+        아직 등록한 버스가 없어요.<br />
+        노선번호와 정류장을 검색해서 추가하세요.
+        <br /><button id="empty-open-settings">버스 추가</button>
+      </div>`;
+    $("empty-open-settings").onclick = () => { showPage("settings"); syncSettingsUI(); };
+    return;
+  }
+  for (const w of CONFIG.watches) list.appendChild(renderCard(w));
+  requestAnimationFrame(applyBusPositions); // 초기 위치 확정 후 트랜지션 활성
+}
+
+function renderCard(w) {
+  const s = STATE.perWatch.get(w.id) || { arrivals: [], fetchedAt: 0 };
+  const now = Date.now();
+  const elapsed = s.fetchedAt ? (now - s.fetchedAt) / 1000 : 0;
+  const a0 = s.arrivals[0];
+  const a1 = s.arrivals[1];
+  const displaySec0 = a0 && a0.remainSec != null ? Math.max(0, a0.remainSec - elapsed) : null;
+
+  const card = document.createElement("div");
+  card.className = "bus-card";
+  card.style.setProperty("--route-color", w.color || routeColor(w.routeType));
+  if (a0?.special === "arriving") card.classList.add("arriving", "urgent");
+  else if (a0?.special === "ended") card.classList.add("ended");
+  else if (displaySec0 != null && displaySec0 < 60) card.classList.add("urgent");
+
+  const typeLabel = ROUTE_TYPE_LABEL[String(w.routeType)] || "";
+  card.innerHTML = `
+    <div class="card-top">
+      <div>
+        <div class="route-name">${escapeHtml(w.routeName)}</div>
+        <div class="card-meta">🚏 ${escapeHtml(w.stationName)} · <strong>${escapeHtml(w.nickname || "")}</strong></div>
+      </div>
+      <span class="route-type">${escapeHtml(typeLabel || "노선")}</span>
+    </div>
+
+    <div class="track-wrap">
+      <div class="track" data-track>
+        <div class="track-line"></div>
+        ${[5,4,3,2,1].map(n => `<div class="track-dot" data-slot="${n}" style="left: calc(${dotLeft(n)}%);"></div>`).join("")}
+        <div class="track-station">🚏</div>
+        <div class="track-bus" data-bus>${busIconHtml()}</div>
+      </div>
+    </div>
+
+    <div class="card-arrival">
+      <div>
+        ${renderArrivalTime(a0, displaySec0)}
+        ${a0?.currentLoc ? `<div class="arrival-here">현재 <strong>${escapeHtml(a0.currentLoc)}</strong> 지남</div>` : ""}
+      </div>
+      <div class="arrival-stops">
+        ${a0?.remainStops != null
+          ? `<div><strong>${a0.remainStops}</strong>정류장 남음</div>`
+          : (a0?.special === "arriving" ? `<div><strong>도착 임박</strong></div>` : "")}
+        ${a0?.isLast ? `<div class="arrival-sub">🚨 막차</div>` : ""}
+      </div>
+    </div>
+
+    <div>${renderLeaveRow(w, displaySec0, a0)}</div>
+
+    ${a1 && a1.remainSec != null ? `
+      <div class="card-next">
+        <span>다음</span>
+        <span>${escapeHtml(a1.raw?.replace(/\[.*?\]/g,"").trim() || fmtTime(a1.remainSec))}${a1.remainStops!=null?` · ${a1.remainStops}정류장`:""}</span>
+      </div>` : ""}
+  `;
+  card.dataset.watchId = w.id;
+  card.dataset.busLeft = a0 ? busLeftPercent(a0.remainStops, a0.special) : "";
+  return card;
+}
+
+function renderArrivalTime(a, displaySec) {
+  if (!a) return `<div class="arrival-time muted">—</div>`;
+  if (a.special === "arriving") return `<div class="arrival-time hot">곧 도착</div>`;
+  if (a.special === "wait") return `<div class="arrival-time muted">출발 대기</div>`;
+  if (a.special === "ended") return `<div class="arrival-time muted">운행 종료</div>`;
+  if (displaySec == null) return `<div class="arrival-time muted">정보 없음</div>`;
+  let cls = "";
+  if (displaySec < 60) cls = "hot";
+  else if (displaySec < 180) cls = "warn";
+  return `<div class="arrival-time ${cls}">${escapeHtml(fmtTime(displaySec))} 후</div>`;
+}
+
+function renderLeaveRow(w, displaySec, a) {
+  const walk = Number(w.walkSeconds) || 0;
+  if (!walk) return `<div class="leave na"><span class="label">🏃 나가기 타이머</span><span class="value">이동시간 미설정</span></div>`;
+  if (!a || displaySec == null || a.special === "ended" || a.special === "wait") {
+    return `<div class="leave na"><span class="label">🏃 도보 ${fmtTime(walk)}</span><span class="value">—</span></div>`;
+  }
+  const goSec = displaySec - walk;
+  if (goSec < -30) {
+    return `<div class="leave missed"><span class="label">🏃 이 버스는 놓쳤어요</span><span class="value">-${escapeHtml(fmtTime(-goSec))}</span></div>`;
+  }
+  if (goSec <= 0) {
+    return `<div class="leave now"><span class="label">🚨 지금 나가세요!</span><span class="value">${escapeHtml(fmtSigned(goSec))}</span></div>`;
+  }
+  const cls = goSec < 60 ? "go" : "";
+  return `<div class="leave ${cls}"><span class="label">🏃 나가기까지</span><span class="value">${escapeHtml(fmtTime(goSec))}</span></div>`;
+}
+
+function dotLeft(slot) {
+  // slot 1..5 (1 = 가장 오른쪽, 5 = 가장 왼쪽) → 왼쪽 offset 8px + 나머지 % 는 line 위치와 맞춰
+  const left = 6, right = 32; // padding 오른쪽 정류장 아이콘 여백
+  const rangePct = 100 - left - right;
+  const pos = (5 - slot) / 4;
+  return left + rangePct * pos;
+}
+function busLeftPercent(remainStops, special) {
+  if (special === "arriving" || remainStops === 0) return dotLeft(1);
+  if (remainStops == null) return "";
+  if (remainStops > 5) return "far";
+  return dotLeft(Math.max(1, Math.min(5, remainStops)));
+}
+function applyBusPositions() {
+  for (const w of CONFIG.watches) {
+    const card = document.querySelector(`.bus-card[data-watch-id="${CSS.escape(w.id)}"]`);
+    if (!card) continue;
+    const bus = card.querySelector("[data-bus]");
+    if (!bus) continue;
+    const pos = card.dataset.busLeft;
+    const s = STATE.perWatch.get(w.id);
+    const a = s?.arrivals?.[0];
+    // 활성 dot 표시
+    card.querySelectorAll(".track-dot").forEach(d => d.classList.remove("active"));
+    if (typeof pos === "string" && pos !== "" && pos !== "far") {
+      bus.classList.remove("off-track");
+      bus.style.left = pos + "%";
+      const slotEl = card.querySelector(`.track-dot[data-slot="${Math.max(1, Math.min(5, a?.remainStops ?? 1))}"]`);
+      if (slotEl) slotEl.classList.add("active");
+    } else if (pos === "far") {
+      bus.classList.add("off-track");
+      bus.setAttribute("data-far", `${a?.remainStops ?? "?"}정류장 밖`);
+      bus.style.left = "";
+    } else {
+      bus.style.left = "-40px";
+      bus.classList.remove("off-track");
+    }
+  }
+}
+
+/* 매초 UI만 재계산 (fetch는 별도 주기) */
+function tick() {
+  updateUpdatedText();
+  updateActiveBadge();
+  for (const w of CONFIG.watches) {
+    const s = STATE.perWatch.get(w.id);
+    if (!s) continue;
+    const card = document.querySelector(`.bus-card[data-watch-id="${CSS.escape(w.id)}"]`);
+    if (!card) continue;
+    const now = Date.now();
+    const elapsed = s.fetchedAt ? (now - s.fetchedAt) / 1000 : 0;
+    const a = s.arrivals[0];
+    const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
+    const timeEl = card.querySelector(".arrival-time");
+    if (timeEl && a) timeEl.outerHTML = renderArrivalTime(a, displaySec);
+    const leaveEl = card.querySelector(".leave");
+    if (leaveEl) leaveEl.outerHTML = renderLeaveRow(w, displaySec, a);
+  }
+}
+
+/* ========================================================
+   API 호출 · 새로고침
+======================================================== */
+async function refreshAll(manual = false) {
+  if (!CONFIG.watches.length) return;
+  const active = isActiveWindow();
+  if (!active && !manual) return;
+  setStatus("loading", "업데이트 중…");
+  let hadErr = false;
+
+  for (const w of CONFIG.watches) {
+    try {
+      const items = await fetchArrival(w.stId, w.busRouteId, w.ord);
+      const item = items[0];
+      if (!item) {
+        STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], stationName: w.stationName });
+        continue;
+      }
+      const a0 = parseArrivalItem(item, 1);
+      const a1 = parseArrivalItem(item, 2);
+      STATE.perWatch.set(w.id, {
+        fetchedAt: Date.now(),
+        arrivals: [a0, a1].filter(a => a && (a.remainSec != null || a.special)),
+        stationName: item.stNm || w.stationName,
+      });
+    } catch (err) {
+      hadErr = true; STATE.lastError = err.message;
+      STATE.perWatch.set(w.id, { fetchedAt: Date.now(), arrivals: [], error: err.message });
+    }
+  }
+  STATE.lastUpdatedAt = Date.now();
+  setStatus(hadErr ? "error" : "ok", hadErr ? `일부 오류: ${STATE.lastError}` : (CONFIG.mode === "mock" ? "Mock · 최신" : "최신"));
+  renderList();
+}
+
+function scheduleTimers() {
+  if (STATE.refreshTimer) clearInterval(STATE.refreshTimer);
+  if (STATE.tickTimer) clearInterval(STATE.tickTimer);
+  const sec = Math.max(10, Number(CONFIG.refreshSeconds) || 30);
+  STATE.refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (isActiveWindow()) refreshAll(false);
+  }, sec * 1000);
+  STATE.tickTimer = setInterval(tick, 1000);
+}
+
+/* ========================================================
+   자동완성 UI
+======================================================== */
+const state = { pickedRoute: null, pickedStop: null, routeStops: [] };
+
+function bindAutocomplete() {
+  const routeInput = $("new-route");
+  const stationInput = $("new-station");
+
+  const searchRouteDebounced = debounce(async () => {
+    const q = routeInput.value.trim();
+    const box = $("sug-route");
+    if (!q) { box.style.display = "none"; return; }
+    try {
+      const items = await searchRoutes(q);
+      if (!items.length) { box.innerHTML = `<div class="empty">검색 결과 없음</div>`; box.style.display=""; return; }
+      box.innerHTML = "";
+      for (const r of items.slice(0, 30)) {
+        const b = document.createElement("button");
+        const type = ROUTE_TYPE_LABEL[String(r.routeType)] || "";
+        b.innerHTML = `<div><span class="swatch" style="background:${routeColor(r.routeType)}"></span><strong>${escapeHtml(r.busRouteNm)}</strong> <span class="meta">${escapeHtml(type)}${r.corpNm?` · ${escapeHtml(r.corpNm)}`:""}</span></div>`;
+        b.onclick = () => selectRoute(r);
+        box.appendChild(b);
+      }
+      box.style.display = "";
+    } catch (err) {
+      box.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      box.style.display = "";
+    }
+  }, 250);
+  routeInput.addEventListener("input", searchRouteDebounced);
+  routeInput.addEventListener("focus", searchRouteDebounced);
+  routeInput.addEventListener("blur", () => setTimeout(() => $("sug-route").style.display = "none", 180));
+
+  const searchStopDebounced = debounce(() => renderStationSuggest(stationInput.value.trim()), 100);
+  stationInput.addEventListener("input", searchStopDebounced);
+  stationInput.addEventListener("focus", searchStopDebounced);
+  stationInput.addEventListener("blur", () => setTimeout(() => $("sug-station").style.display = "none", 180));
+}
+
+async function selectRoute(r) {
+  state.pickedRoute = r;
+  state.pickedStop = null;
+  $("new-route").value = `${r.busRouteNm} (${ROUTE_TYPE_LABEL[String(r.routeType)] || ""})`;
+  $("sug-route").style.display = "none";
+  $("new-station").disabled = false;
+  $("new-station").value = "";
+  $("btn-add-watch").disabled = true;
+  try {
+    setStatus("loading", "노선 정류장 불러오는 중…");
+    state.routeStops = await fetchRouteStops(r.busRouteId);
+    setStatus("ok", `${state.routeStops.length}개 정류장`);
+    renderStationSuggest("");
+    $("new-station").focus();
+  } catch (err) {
+    setStatus("error", err.message);
+    toast(err.message, true);
+  }
+}
+function renderStationSuggest(q) {
+  const box = $("sug-station");
+  if (!state.pickedRoute) { box.style.display = "none"; return; }
+  const qLower = q.toLowerCase();
+  const list = state.routeStops.filter(s => (s.stationNm || "").toLowerCase().includes(qLower)).slice(0, 60);
+  if (!list.length) { box.innerHTML = `<div class="empty">검색 결과 없음</div>`; box.style.display=""; return; }
+  box.innerHTML = "";
+  for (const s of list) {
+    const b = document.createElement("button");
+    b.innerHTML = `<div><strong>${escapeHtml(s.stationNm)}</strong> <span class="meta">${escapeHtml(s.arsId || "")} · #${escapeHtml(String(s.seq))}</span></div>`;
+    b.onclick = () => selectStop(s);
+    box.appendChild(b);
+  }
+  box.style.display = "";
+}
+function selectStop(s) {
+  state.pickedStop = s;
+  $("new-station").value = `${s.stationNm} (#${s.seq})`;
+  $("sug-station").style.display = "none";
+  $("btn-add-watch").disabled = false;
+}
+
+/* ========================================================
+   버스 추가 / 삭제
+======================================================== */
+function addWatch() {
+  if (!state.pickedRoute || !state.pickedStop) return toast("노선과 정류장을 모두 선택하세요.", true);
+  const r = state.pickedRoute, s = state.pickedStop;
+  const walk = Number($("new-walk").value) || 0;
+  const nick = $("new-nick").value.trim();
+  const dup = CONFIG.watches.some(w => w.busRouteId === r.busRouteId && w.stId === s.stationId);
+  if (dup) return toast("이미 등록된 조합이에요.", true);
+  CONFIG.watches.push({
+    id: uid(),
+    busRouteId: r.busRouteId,
+    routeName: r.busRouteNm,
+    routeType: r.routeType,
+    color: routeColor(r.routeType),
+    stId: s.stationId,
+    arsId: s.arsId,
+    stationName: s.stationNm,
+    ord: Number(s.seq) || 1,
+    walkSeconds: walk,
+    nickname: nick,
+  });
+  save();
+  state.pickedRoute = null; state.pickedStop = null; state.routeStops = [];
+  $("new-route").value = ""; $("new-station").value = ""; $("new-station").disabled = true;
+  $("new-nick").value = "";
+  $("btn-add-watch").disabled = true;
+  renderWatchList();
+  renderList();
+  refreshAll(true);
+  toast("추가했어요.");
+}
+function renderWatchList() {
+  const el = $("watch-list");
+  el.innerHTML = "";
+  if (!CONFIG.watches.length) { el.innerHTML = `<div class="help-text">등록된 항목이 없어요.</div>`; return; }
+  for (const w of CONFIG.watches) {
+    const row = document.createElement("div");
+    row.className = "watch-row";
+    row.innerHTML = `
+      <div class="info">
+        <div class="r"><span class="swatch" style="background:${w.color}"></span>${escapeHtml(w.routeName)} <span style="color:var(--text-mute);font-weight:400">· ${escapeHtml(w.stationName)}</span></div>
+        <div class="s">${escapeHtml(w.nickname || "")} · 도보 ${fmtTime(w.walkSeconds || 0)}</div>
+      </div>
+      <button class="secondary-btn danger" data-id="${w.id}">삭제</button>`;
+    row.querySelector("button").onclick = () => {
+      CONFIG.watches = CONFIG.watches.filter(x => x.id !== w.id);
+      STATE.perWatch.delete(w.id);
+      save(); renderWatchList(); renderList();
+    };
+    el.appendChild(row);
+  }
+}
+
+/* ========================================================
+   버스 아이콘 갤러리
+======================================================== */
+function renderIconGallery() {
+  const el = $("icon-gallery");
+  el.innerHTML = "";
+  const items = [...Object.keys(BUS_ICONS)];
+  if (CONFIG.busIcon.startsWith("data:")) items.push(CONFIG.busIcon);
+  for (const key of items) {
+    const cell = document.createElement("button");
+    cell.className = "icon-cell" + (CONFIG.busIcon === key ? " active" : "");
+    cell.type = "button";
+    cell.innerHTML = key.startsWith("data:")
+      ? `<img alt="custom" src="${escapeHtml(key)}" />`
+      : BUS_ICONS[key];
+    cell.onclick = () => { CONFIG.busIcon = key; save(); renderIconGallery(); renderList(); };
+    el.appendChild(cell);
+  }
+}
+function bindIconUpload() {
+  $("btn-upload-icon").onclick = () => $("input-icon-file").click();
+  $("input-icon-file").onchange = async e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    if (f.size > 300 * 1024) return toast("이미지가 너무 커요 (300KB 이하).", true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      CONFIG.busIcon = String(reader.result);
+      save(); renderIconGallery(); renderList();
+      toast("아이콘을 바꿨어요.");
+    };
+    reader.readAsDataURL(f);
+  };
+  $("btn-reset-icon").onclick = () => { CONFIG.busIcon = "preset-1"; save(); renderIconGallery(); renderList(); };
+}
+
+/* ========================================================
+   요일 선택
+======================================================== */
+const DAY_LABELS = ["일","월","화","수","목","금","토"];
+function renderDayPicker() {
+  const wrap = $("input-days"); wrap.innerHTML = "";
+  DAY_LABELS.forEach((label, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.className = "day-btn" + (CONFIG.activeDays.includes(i) ? " on" : "");
+    b.onclick = () => {
+      CONFIG.activeDays = CONFIG.activeDays.includes(i)
+        ? CONFIG.activeDays.filter(d => d !== i)
+        : [...CONFIG.activeDays, i].sort();
+      save(); renderDayPicker(); updateActiveBadge();
+    };
+    wrap.appendChild(b);
+  });
+}
+
+/* ========================================================
+   설정 UI 동기화
+======================================================== */
+function syncSettingsUI() {
+  $("input-mode").value = CONFIG.mode;
+  $("proxy-field").style.display = CONFIG.mode === "proxy" ? "" : "none";
+  $("input-proxy").value = CONFIG.proxyUrl;
+  $("input-key").value = CONFIG.serviceKey;
+  $("input-start").value = CONFIG.activeStart;
+  $("input-end").value = CONFIG.activeEnd;
+  $("input-refresh").value = CONFIG.refreshSeconds;
+  $("input-corner").value = CONFIG.corner;
+  renderDayPicker();
+  renderWatchList();
+  renderIconGallery();
+}
+
+/* ========================================================
+   이벤트 바인딩
+======================================================== */
+function bindEvents() {
+  $("btn-list").onclick = () => showPage("list");
+  $("btn-settings").onclick = () => { showPage("settings"); syncSettingsUI(); };
+  $("btn-help").onclick = () => showPage("help");
+  $("btn-refresh").onclick = () => refreshAll(true);
+  $("link-help").onclick = e => { e.preventDefault(); showPage("help"); };
+
+  $("input-mode").onchange = e => {
+    CONFIG.mode = e.target.value;
+    $("proxy-field").style.display = CONFIG.mode === "proxy" ? "" : "none";
+    save(); refreshAll(true);
+  };
+  $("input-proxy").oninput = e => { CONFIG.proxyUrl = e.target.value; save(); };
+  $("input-key").oninput = e => { CONFIG.serviceKey = e.target.value; save(); };
+  $("input-start").onchange = e => { CONFIG.activeStart = e.target.value; save(); updateActiveBadge(); };
+  $("input-end").onchange = e => { CONFIG.activeEnd = e.target.value; save(); updateActiveBadge(); };
+  $("input-refresh").onchange = e => { CONFIG.refreshSeconds = Math.max(10, Number(e.target.value) || 30); save(); scheduleTimers(); };
+  $("input-corner").onchange = e => { CONFIG.corner = e.target.value; $("app").className = e.target.value; save(); };
+
+  $("btn-add-watch").onclick = addWatch;
+
+  $("btn-export").onclick = () => {
+    const blob = new Blob([JSON.stringify(CONFIG, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "bus-widget-config.json";
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+  $("btn-import").onclick = () => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "application/json";
+    input.onchange = async () => {
+      const f = input.files[0]; if (!f) return;
+      try {
+        const parsed = JSON.parse(await f.text());
+        CONFIG = { ...structuredClone(DEFAULTS), ...parsed };
+        if (!Array.isArray(CONFIG.watches)) CONFIG.watches = [];
+        save(); syncSettingsUI(); renderList(); scheduleTimers();
+        toast("가져왔어요."); refreshAll(true);
+      } catch { toast("파일을 읽을 수 없어요.", true); }
+    };
+    input.click();
+  };
+
+  bindAutocomplete();
+  bindIconUpload();
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && isActiveWindow()) refreshAll(false);
+  });
+}
+
+/* ========================================================
+   토스트
+======================================================== */
+let toastTimer = null;
+function toast(msg, err = false) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.toggle("err", err); t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+/* ========================================================
+   초기화
+======================================================== */
+function init() {
+  $("app").className = CONFIG.corner || "corner-tr";
+  bindEvents();
+  syncSettingsUI();
+  renderList();
+  updateActiveBadge();
+  scheduleTimers();
+  if (CONFIG.watches.length) refreshAll(true);
+  else setStatus("", "설정에서 버스를 추가해주세요");
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
