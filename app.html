@@ -69,7 +69,8 @@
     letter-spacing: 0.02em;
   }
   .badge.off { background: rgba(255,255,255,0.06); color: var(--text-mute); }
-  .actions { display: flex; gap: 2px; }
+  .actions { display: flex; gap: 2px; opacity: .35; transition: opacity .2s; }
+  .header:hover .actions { opacity: 1; }
   .icon-btn {
     width: 28px; height: 28px; border-radius: 8px;
     background: transparent; border: none; color: var(--text-dim);
@@ -136,150 +137,78 @@
   .suggest .meta { color: var(--text-mute); font-size: 10px; margin-top: 2px; }
   .suggest .empty { padding: 12px; color: var(--text-mute); font-size: 11px; text-align: center; }
 
-  /* ---------- 위젯 카드 ---------- */
-  .bus-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 4px; }
+  /* ---------- 위젯 카드 (미니멀) ---------- */
+  .bus-list { display: flex; flex-direction: column; gap: 12px; padding-bottom: 6px; }
 
   .bus-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 12px 14px 14px;
-    position: relative;
-    overflow: hidden;
-    transition: border-color .18s, background .18s;
+    --rc: var(--accent);
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 20px;
+    padding: 20px 20px 16px;
+    transition: border-color .3s;
   }
-  .bus-card::before {
-    content: "";
-    position: absolute; left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: var(--route-color, var(--accent));
-    opacity: 0.9;
-  }
-  .bus-card.urgent { border-color: color-mix(in oklab, var(--route-color) 45%, transparent); background: color-mix(in oklab, var(--route-color) 8%, var(--panel)); }
-  .bus-card.arriving { animation: pulse 1.6s infinite; }
-  .bus-card.ended { opacity: 0.55; }
-  @keyframes pulse {
-    0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--route-color) 35%, transparent); }
-    50%    { box-shadow: 0 0 0 6px transparent; }
-  }
+  .bus-card.urgent { border-color: color-mix(in oklab, var(--rc) 45%, transparent); }
 
-  .card-top {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-    margin-bottom: 6px;
-  }
-  .route-name {
-    font-size: 20px; font-weight: 800; letter-spacing: 0.01em;
-    color: var(--route-color, var(--text));
-  }
-  .route-type {
-    font-size: 10px; color: var(--text-mute); padding: 2px 6px;
-    border: 1px solid var(--border); border-radius: 999px;
-  }
-  .card-meta { color: var(--text-mute); font-size: 11px; }
-  .card-meta strong { color: var(--text-dim); font-weight: 600; }
-
-  /* ---------- 트랙 시각화 ---------- */
-  .track-wrap {
-    margin: 10px 0 8px;
-    padding: 8px 8px 6px;
-    background: rgba(0,0,0,0.15);
-    border-radius: 10px;
-    position: relative;
-  }
-  .track {
-    position: relative;
-    height: 44px;
-  }
-  .track-line {
-    position: absolute; left: 8px; right: 40px; top: 50%;
-    height: 2px; background: var(--track);
-    transform: translateY(-50%);
-    border-radius: 2px;
-  }
-  .track-dot {
-    position: absolute; top: 50%;
-    width: 16px; height: 16px; margin: -8px 0 0 -8px;
-    border-radius: 50%; background: transparent;
-    border: 2px solid var(--route-color, var(--accent));
-    box-shadow: 0 0 0 2px rgba(0,0,0,0.2) inset;
-    opacity: 0.55;
-    transition: opacity .3s, transform .3s;
-  }
-  .track-dot.active { opacity: 1; transform: translate(0,0) scale(1.08); }
-  .track-station {
-    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
-    width: 28px; height: 28px; border-radius: 50%;
-    background: color-mix(in oklab, var(--route-color) 15%, transparent);
-    color: var(--route-color, var(--accent));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-    border: 1px solid color-mix(in oklab, var(--route-color) 40%, transparent);
-  }
-  .track-bus {
-    position: absolute; top: 50%;
-    width: 34px; height: 34px; margin: -17px 0 0 -17px;
-    transition: left .8s cubic-bezier(.34,.72,.32,1);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 2;
-    color: var(--route-color, var(--accent));
-    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.35));
-  }
-  .track-bus svg, .track-bus img { width: 100%; height: 100%; display: block; }
-  .track-bus.off-track {
-    left: -8px;
-  }
-  .track-bus.off-track::after {
-    content: attr(data-far);
-    position: absolute; left: 34px; top: 50%; transform: translateY(-50%);
-    font-size: 10px; color: var(--text-mute); white-space: nowrap;
-  }
-
-  /* ---------- 주요 숫자 ---------- */
-  .card-arrival {
-    display: flex; align-items: baseline; justify-content: space-between;
-    gap: 8px; margin-top: 4px;
-  }
-  .arrival-time {
-    font-size: 24px; font-weight: 800; letter-spacing: -0.01em;
-    color: var(--route-color, var(--accent));
+  .card-time {
+    font-size: 42px; font-weight: 200; letter-spacing: -0.03em;
+    color: var(--text); line-height: 1;
     font-variant-numeric: tabular-nums;
-    line-height: 1;
   }
-  .arrival-time.warn { color: var(--warn); }
-  .arrival-time.hot { color: var(--danger); }
-  .arrival-time.muted { color: var(--text-mute); font-size: 16px; font-weight: 600; }
-  .arrival-stops {
-    text-align: right;
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-  .arrival-stops strong { color: var(--text); font-weight: 700; }
-  .arrival-sub { color: var(--text-mute); font-size: 10px; margin-top: 4px; }
-  .arrival-here { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+  .card-time .unit { font-size: 16px; font-weight: 500; color: var(--text-mute); margin: 0 8px 0 3px; }
+  .card-time.state { font-size: 26px; font-weight: 400; color: var(--text-mute); letter-spacing: -0.01em; }
+  .card-time.hot { color: var(--rc); font-weight: 300; }
+  .card-time.state.hot { color: var(--rc); }
 
-  /* ---------- 나가기 타이머 ---------- */
-  .leave {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-top: 10px; padding: 8px 10px;
-    background: var(--panel-strong);
-    border-radius: 10px;
-    font-size: 11px; color: var(--text-dim);
-    gap: 8px;
+  /* 게이지: 버스가 바 위를 달린다 */
+  .gauge {
+    position: relative; margin: 36px 4px 0; height: 4px;
+    border-radius: 2px; background: rgba(255,255,255,0.09);
   }
-  .leave .label { display: flex; align-items: center; gap: 6px; }
-  .leave .value { font-weight: 700; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .leave.go .value, .leave.go .label { color: var(--warn); }
-  .leave.now { background: rgba(255,107,107,0.14); border: 1px solid rgba(255,107,107,0.35); }
-  .leave.now .label, .leave.now .value { color: var(--danger); }
-  .leave.now .value { font-size: 14px; }
-  .leave.missed .value { color: var(--text-mute); }
-  .leave.na { opacity: 0.6; }
+  .gauge-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+    background: linear-gradient(90deg, color-mix(in oklab, var(--rc) 30%, transparent), var(--rc));
+    transition: width 1s linear;
+  }
+  .gauge-end {
+    position: absolute; right: -1px; top: 50%;
+    width: 6px; height: 6px; margin-top: -3px; border-radius: 50%;
+    background: var(--text); opacity: .9;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.08);
+  }
+  .gauge-bus {
+    position: absolute; top: -34px; left: 0;
+    width: 46px; height: 34px; margin-left: -23px;
+    color: var(--rc);
+    transition: left 1s linear;
+    filter: drop-shadow(0 8px 16px color-mix(in oklab, var(--rc) 40%, transparent));
+  }
+  .gauge-bus svg, .gauge-bus img { width: 100%; height: 100%; display: block; }
+  .bus-card.arriving .gauge-bus { animation: bob 1.1s ease-in-out infinite; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
 
-  /* ---------- 다음버스 ---------- */
-  .card-next {
-    margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border);
-    display: flex; justify-content: space-between; font-size: 11px; color: var(--text-mute);
+  .card-caption {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-top: 14px; font-size: 13px; color: var(--text-mute);
   }
+  .card-caption .route { color: var(--rc); font-weight: 700; }
+  .card-caption .station { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-caption .stops { margin-left: auto; flex: none; }
+  .card-caption .stops b { color: var(--text-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .card-leave {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 12px; color: var(--text-mute);
+  }
+  .card-leave b { font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .card-leave.now { color: #ff9f0a; }
+  .card-leave.now b { color: #ff9f0a; }
+  .card-leave.missed { opacity: .55; }
 
   /* ---------- 비어있음 ---------- */
   .empty {
@@ -852,136 +781,89 @@ function renderList() {
     return;
   }
   for (const w of CONFIG.watches) list.appendChild(renderCard(w));
-  requestAnimationFrame(applyBusPositions); // 초기 위치 확정 후 트랜지션 활성
 }
 
 function renderCard(w) {
   const s = STATE.perWatch.get(w.id) || { arrivals: [], fetchedAt: 0 };
-  const now = Date.now();
-  const elapsed = s.fetchedAt ? (now - s.fetchedAt) / 1000 : 0;
-  const a0 = s.arrivals[0];
-  const a1 = s.arrivals[1];
-  const displaySec0 = a0 && a0.remainSec != null ? Math.max(0, a0.remainSec - elapsed) : null;
+  const elapsed = s.fetchedAt ? (Date.now() - s.fetchedAt) / 1000 : 0;
+  const a = s.arrivals[0];
+  const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
+  const t = timeView(a, displaySec);
+  const p = gaugeProgress(a, displaySec) * 100;
 
   const card = document.createElement("div");
   card.className = "bus-card";
-  card.style.setProperty("--route-color", w.color || routeColor(w.routeType));
-  if (a0?.special === "arriving") card.classList.add("arriving", "urgent");
-  else if (a0?.special === "ended") card.classList.add("ended");
-  else if (displaySec0 != null && displaySec0 < 60) card.classList.add("urgent");
+  card.style.setProperty("--rc", w.color || routeColor(w.routeType));
+  if (a?.special === "arriving") card.classList.add("arriving", "urgent");
+  else if (displaySec != null && displaySec < 60) card.classList.add("urgent");
 
-  const typeLabel = ROUTE_TYPE_LABEL[String(w.routeType)] || "";
   card.innerHTML = `
-    <div class="card-top">
-      <div>
-        <div class="route-name">${escapeHtml(w.routeName)}</div>
-        <div class="card-meta">🚏 ${escapeHtml(w.stationName)} · <strong>${escapeHtml(w.nickname || "")}</strong></div>
-      </div>
-      <span class="route-type">${escapeHtml(typeLabel || "노선")}</span>
+    <div class="card-time ${t.cls}" data-time>${t.html}</div>
+    <div class="gauge">
+      <div class="gauge-fill" data-fill style="width:${p}%"></div>
+      <div class="gauge-end"></div>
+      <div class="gauge-bus" data-bus style="left:${p}%">${busIconHtml()}</div>
     </div>
-
-    <div class="track-wrap">
-      <div class="track" data-track>
-        <div class="track-line"></div>
-        ${[5,4,3,2,1].map(n => `<div class="track-dot" data-slot="${n}" style="left: calc(${dotLeft(n)}%);"></div>`).join("")}
-        <div class="track-station">🚏</div>
-        <div class="track-bus" data-bus>${busIconHtml()}</div>
-      </div>
+    <div class="card-caption">
+      <span class="route">${escapeHtml(w.routeName)}</span>
+      <span class="station">${escapeHtml(w.stationName)}</span>
+      <span class="stops" data-stops>${a?.remainStops != null ? `<b>${a.remainStops}</b> 정류장` : ""}</span>
     </div>
-
-    <div class="card-arrival">
-      <div>
-        ${renderArrivalTime(a0, displaySec0)}
-        ${a0?.currentLoc ? `<div class="arrival-here">현재 <strong>${escapeHtml(a0.currentLoc)}</strong> 지남</div>` : ""}
-      </div>
-      <div class="arrival-stops">
-        ${a0?.remainStops != null
-          ? `<div><strong>${a0.remainStops}</strong>정류장 남음</div>`
-          : (a0?.special === "arriving" ? `<div><strong>도착 임박</strong></div>` : "")}
-        ${a0?.isLast ? `<div class="arrival-sub">🚨 막차</div>` : ""}
-      </div>
-    </div>
-
-    <div>${renderLeaveRow(w, displaySec0, a0)}</div>
-
-    ${a1 && a1.remainSec != null ? `
-      <div class="card-next">
-        <span>다음</span>
-        <span>${escapeHtml(a1.raw?.replace(/\[.*?\]/g,"").trim() || fmtTime(a1.remainSec))}${a1.remainStops!=null?` · ${a1.remainStops}정류장`:""}</span>
-      </div>` : ""}
-  `;
+    <div data-leave>${leaveHtml(w, displaySec, a)}</div>`;
   card.dataset.watchId = w.id;
-  card.dataset.busLeft = a0 ? busLeftPercent(a0.remainStops, a0.special) : "";
   return card;
 }
 
-function renderArrivalTime(a, displaySec) {
-  if (!a) return `<div class="arrival-time muted">—</div>`;
-  if (a.special === "arriving") return `<div class="arrival-time hot">곧 도착</div>`;
-  if (a.special === "wait") return `<div class="arrival-time muted">출발 대기</div>`;
-  if (a.special === "ended") return `<div class="arrival-time muted">운행 종료</div>`;
-  if (displaySec == null) return `<div class="arrival-time muted">정보 없음</div>`;
-  let cls = "";
-  if (displaySec < 60) cls = "hot";
-  else if (displaySec < 180) cls = "warn";
-  return `<div class="arrival-time ${cls}">${escapeHtml(fmtTime(displaySec))} 후</div>`;
+function timeView(a, displaySec) {
+  if (!a) return { cls: "state", html: "—" };
+  if (a.special === "arriving") return { cls: "state hot", html: "곧 도착" };
+  if (a.special === "wait") return { cls: "state", html: "출발 대기" };
+  if (a.special === "ended") return { cls: "state", html: "운행 종료" };
+  if (displaySec == null) return { cls: "state", html: "정보 없음" };
+  const m = Math.floor(displaySec / 60), sec = Math.floor(displaySec % 60);
+  const cls = displaySec < 60 ? "hot" : "";
+  if (m === 0) return { cls, html: `${sec}<span class="unit">초</span>` };
+  return { cls, html: `${m}<span class="unit">분</span>${String(sec).padStart(2, "0")}<span class="unit">초</span>` };
 }
 
-function renderLeaveRow(w, displaySec, a) {
+/* 진행률: 도착까지 12분 창을 기준으로 초 단위 보간, 없으면 정류장 수 기준 */
+function gaugeProgress(a, displaySec) {
+  if (!a || a.special === "wait" || a.special === "ended") return 0;
+  if (a.special === "arriving") return 1;
+  const MAX_SEC = 12 * 60;
+  let p = null;
+  if (displaySec != null) p = 1 - Math.min(displaySec, MAX_SEC) / MAX_SEC;
+  else if (a.remainStops != null) p = 1 - Math.min(a.remainStops, 8) / 8;
+  if (p == null) return 0;
+  return clamp(p, 0.03, 0.985);
+}
+
+function leaveHtml(w, displaySec, a) {
   const walk = Number(w.walkSeconds) || 0;
-  if (!walk) return `<div class="leave na"><span class="label">🏃 나가기 타이머</span><span class="value">이동시간 미설정</span></div>`;
-  if (!a || displaySec == null || a.special === "ended" || a.special === "wait") {
-    return `<div class="leave na"><span class="label">🏃 도보 ${fmtTime(walk)}</span><span class="value">—</span></div>`;
-  }
+  if (!walk || !a || displaySec == null || a.special === "ended" || a.special === "wait") return "";
   const goSec = displaySec - walk;
-  if (goSec < -30) {
-    return `<div class="leave missed"><span class="label">🏃 이 버스는 놓쳤어요</span><span class="value">-${escapeHtml(fmtTime(-goSec))}</span></div>`;
-  }
-  if (goSec <= 0) {
-    return `<div class="leave now"><span class="label">🚨 지금 나가세요!</span><span class="value">${escapeHtml(fmtSigned(goSec))}</span></div>`;
-  }
-  const cls = goSec < 60 ? "go" : "";
-  return `<div class="leave ${cls}"><span class="label">🏃 나가기까지</span><span class="value">${escapeHtml(fmtTime(goSec))}</span></div>`;
+  if (goSec < -30) return `<div class="card-leave missed"><span>이번 버스는 어려워요</span><b>도보 ${escapeHtml(fmtTime(walk))}</b></div>`;
+  if (goSec <= 0) return `<div class="card-leave now"><span>지금 나가세요</span><b>도보 ${escapeHtml(fmtTime(walk))}</b></div>`;
+  return `<div class="card-leave"><span>출발까지</span><b>${escapeHtml(fmtTime(goSec))}</b></div>`;
 }
 
-function dotLeft(slot) {
-  // slot 1..5 (1 = 가장 오른쪽, 5 = 가장 왼쪽) → 왼쪽 offset 8px + 나머지 % 는 line 위치와 맞춰
-  const left = 6, right = 32; // padding 오른쪽 정류장 아이콘 여백
-  const rangePct = 100 - left - right;
-  const pos = (5 - slot) / 4;
-  return left + rangePct * pos;
-}
-function busLeftPercent(remainStops, special) {
-  if (special === "arriving" || remainStops === 0) return dotLeft(1);
-  if (remainStops == null) return "";
-  if (remainStops > 5) return "far";
-  return dotLeft(Math.max(1, Math.min(5, remainStops)));
-}
-function applyBusPositions() {
-  for (const w of CONFIG.watches) {
-    const card = document.querySelector(`.bus-card[data-watch-id="${CSS.escape(w.id)}"]`);
-    if (!card) continue;
-    const bus = card.querySelector("[data-bus]");
-    if (!bus) continue;
-    const pos = card.dataset.busLeft;
-    const s = STATE.perWatch.get(w.id);
-    const a = s?.arrivals?.[0];
-    // 활성 dot 표시
-    card.querySelectorAll(".track-dot").forEach(d => d.classList.remove("active"));
-    if (typeof pos === "string" && pos !== "" && pos !== "far") {
-      bus.classList.remove("off-track");
-      bus.style.left = pos + "%";
-      const slotEl = card.querySelector(`.track-dot[data-slot="${Math.max(1, Math.min(5, a?.remainStops ?? 1))}"]`);
-      if (slotEl) slotEl.classList.add("active");
-    } else if (pos === "far") {
-      bus.classList.add("off-track");
-      bus.setAttribute("data-far", `${a?.remainStops ?? "?"}정류장 밖`);
-      bus.style.left = "";
-    } else {
-      bus.style.left = "-40px";
-      bus.classList.remove("off-track");
-    }
-  }
+function updateCardDynamic(card, w) {
+  const s = STATE.perWatch.get(w.id);
+  if (!s) return;
+  const elapsed = s.fetchedAt ? (Date.now() - s.fetchedAt) / 1000 : 0;
+  const a = s.arrivals[0];
+  const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
+  const t = timeView(a, displaySec);
+  const timeEl = card.querySelector("[data-time]");
+  timeEl.className = `card-time ${t.cls}`.trim();
+  timeEl.innerHTML = t.html;
+  const p = gaugeProgress(a, displaySec) * 100;
+  card.querySelector("[data-fill]").style.width = p + "%";
+  card.querySelector("[data-bus]").style.left = p + "%";
+  card.querySelector("[data-stops]").innerHTML = a?.remainStops != null ? `<b>${a.remainStops}</b> 정류장` : "";
+  card.querySelector("[data-leave]").innerHTML = leaveHtml(w, displaySec, a);
+  card.classList.toggle("arriving", a?.special === "arriving");
+  card.classList.toggle("urgent", a?.special === "arriving" || (displaySec != null && displaySec < 60));
 }
 
 /* 매초 UI만 재계산 (fetch는 별도 주기) */
@@ -989,18 +871,8 @@ function tick() {
   updateUpdatedText();
   updateActiveBadge();
   for (const w of CONFIG.watches) {
-    const s = STATE.perWatch.get(w.id);
-    if (!s) continue;
     const card = document.querySelector(`.bus-card[data-watch-id="${CSS.escape(w.id)}"]`);
-    if (!card) continue;
-    const now = Date.now();
-    const elapsed = s.fetchedAt ? (now - s.fetchedAt) / 1000 : 0;
-    const a = s.arrivals[0];
-    const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
-    const timeEl = card.querySelector(".arrival-time");
-    if (timeEl && a) timeEl.outerHTML = renderArrivalTime(a, displaySec);
-    const leaveEl = card.querySelector(".leave");
-    if (leaveEl) leaveEl.outerHTML = renderLeaveRow(w, displaySec, a);
+    if (card) updateCardDynamic(card, w);
   }
 }
 
