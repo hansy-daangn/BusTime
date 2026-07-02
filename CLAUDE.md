@@ -67,6 +67,16 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 - 결과: 일 ~600회 (한도의 60%). 화면은 로컬 카운트다운(매초)이라 폴링이 느슨해도 끊겨 보이지 않는다.
 - 사용량 카운터가 localStorage에 쌓이고 개발자 빌드 상태바에만 표시.
 
+## 실 API 검증 결과 (2026-07-02, 샌드박스에서 r.jina.ai 릴레이로 실측)
+
+- ✅ `ws.bus.go.kr` 응답 확인. `resultType=json` 동작 (data.go.kr 문서엔 XML만 표기돼 있지만 백엔드는 JSON 지원 — 오류 응답도 JSON으로 수신됨).
+- ✅ 응답 스키마 = 코드 기대와 일치 (`msgHeader.headerCd/headerMsg`, `msgBody.itemList`). headerCd ≠ "0" 오류 경로 실동작 확인.
+- ✅ URL 경로는 대소문자 구분 (`busRouteInfo` 소문자로 치면 404).
+- ❌ **기본 키(103d…) 인증 실패** — "SERVICE KEY IS NOT REGISTERED ERROR (에러코드 30)". 승인 목록·서비스 일치는 문서로 확인(서울특별시_버스도착정보조회, 15000314). 발급 직후 인증모듈 전파 지연(수십 분~수 시간)일 가능성이 높음 → 시간 두고 재시도.
+- ❌ **보조 키(415a…) 무효** — 동일 에러. 재발급 필요.
+- ❌ **노선 검색(busRouteInfo/*)은 별도 서비스**(서울특별시_버스노선정보조회) → 기본 키 승인 범위 밖. data.go.kr에서 추가 활용신청(자동승인) 해야 자동완성·resolveWatch가 작동함.
+- ⚠️ **9802는 서울 면허가 아님** — 인천 광역버스(연수·송도↔강남, 논현역~양재 경유; 인천시청 공지로 확인). 경기 수원행 9802도 별개로 존재(GBIS 241005300). 서울시 API 노선 DB에 없으므로 현 구조로는 기본값(9802·논현역) 해석 불가 → 국토부 TAGO 또는 인천 BIS 연동 필요하거나 기본 노선을 서울 면허로 교체해야 함.
+
 ## 알려진 제약
 
 - **HTTPS 페이지(Pages)에서 API 직접 호출은 mixed content로 차단** (API가 http) → auto 모드가 로컬 proxy.py(http://localhost:8787)로 폴백. localhost는 브라우저가 secure context로 취급해 허용됨. 즉 Pages에서 실데이터를 보려면 각자 PC에서 `python proxy.py` 실행 필요. Electron 단계에서 이 제약 소멸.
