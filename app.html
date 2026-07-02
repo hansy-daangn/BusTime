@@ -283,6 +283,26 @@
     color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent);
   }
 
+  /* ---------- 시나리오 미리보기 탭 ---------- */
+  .demo-bar {
+    display: flex; gap: 4px; padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .demo-bar::-webkit-scrollbar { height: 0; }
+  .demo-bar button {
+    flex: none; padding: 5px 11px; border-radius: 999px;
+    background: var(--panel); border: 1px solid var(--border);
+    color: var(--text-mute); font-size: 10px; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .demo-bar button:hover { color: var(--text-dim); }
+  .demo-bar button.on {
+    background: color-mix(in oklab, var(--accent) 18%, var(--panel));
+    color: var(--accent);
+    border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  }
+
   /* ---------- 토스트 ---------- */
   .toast {
     position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
@@ -441,6 +461,17 @@
       </div>
     </div>
 
+    <div class="demo-bar" id="demo-bar" title="시나리오 미리보기 — 실제 도착을 기다리지 않고 각 상태를 확인">
+      <button data-scn="live" class="on">실시간</button>
+      <button data-scn="far">여유</button>
+      <button data-scn="near">접근</button>
+      <button data-scn="arriving">곧 도착</button>
+      <button data-scn="leave">지금 나가기</button>
+      <button data-scn="missed">놓침</button>
+      <button data-scn="ended">운행 종료</button>
+      <button data-scn="play">▶ 자동 시연</button>
+    </div>
+
     <div class="status-bar">
       <div><span id="status-dot" class="dot"></span><span id="status-text">준비 중</span></div>
       <div id="status-updated"></div>
@@ -467,7 +498,19 @@ const DEFAULTS = {
   refreshSeconds: 30,
   corner: "corner-tr",
   busIcon: "preset-1",       // preset-1..4, or a data URL
-  watches: [],
+  watches: [{
+    id: "default-9802-nonhyeon",
+    busRouteId: "100100980200",
+    routeName: "9802",
+    routeType: "6",
+    color: "#e51937",
+    stId: "121000032008",
+    arsId: "32008",
+    stationName: "논현역",
+    ord: 9,
+    walkSeconds: 300,
+    nickname: "기본",
+  }],
 };
 
 let CONFIG = load();
@@ -478,6 +521,8 @@ const STATE = {
   refreshTimer: null,
   tickTimer: null,
   refreshing: false,
+  demo: null,        // 시나리오 미리보기 (null = 실시간)
+  demoTimer: null,
 };
 
 /* 외부에서 온 설정(localStorage·가져오기)은 신뢰하지 않고 정규화 */
@@ -503,7 +548,9 @@ function load() {
     return normalizeConfig(raw ? JSON.parse(raw) : {});
   } catch { return normalizeConfig({}); }
 }
-function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); }
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); } catch { /* 샌드박스 등 저장 불가 환경 */ }
+}
 
 /* ========================================================
    유틸
@@ -593,6 +640,7 @@ async function fetchArrival(stId, busRouteId, ord) {
    Mock 데이터
 ======================================================== */
 const MOCK_ROUTES = [
+  { busRouteId: "100100980200", busRouteNm: "9802", routeType: "6", firstBusTm: "0500", lastBusTm: "2330" },
   { busRouteId: "100100118", busRouteNm: "9007",  routeType: "6", firstBusTm: "0430", lastBusTm: "0100" },
   { busRouteId: "100100223", busRouteNm: "9707",  routeType: "6", firstBusTm: "0500", lastBusTm: "2300" },
   { busRouteId: "100100442", busRouteNm: "7212",  routeType: "3", firstBusTm: "0430", lastBusTm: "2400" },
@@ -609,8 +657,9 @@ const MOCK_STOPS_BY_ROUTE = new Map(MOCK_ROUTES.map(r => [r.busRouteId, [
   { stationId: "113000850", stationNm: "복정역",          arsId: "24099", seq: "6"  },
   { stationId: "113001100", stationNm: "가락시장",         arsId: "24444", seq: "7"  },
   { stationId: "113001300", stationNm: "잠실역",          arsId: "25555", seq: "8"  },
-  { stationId: "113001500", stationNm: "강남역",          arsId: "23133", seq: "9"  },
-  { stationId: "113001700", stationNm: "역삼역",          arsId: "23155", seq: "10" },
+  { stationId: "121000032008", stationNm: "논현역",       arsId: "32008", seq: "9"  },
+  { stationId: "113001500", stationNm: "강남역",          arsId: "23133", seq: "10" },
+  { stationId: "113001700", stationNm: "역삼역",          arsId: "23155", seq: "11" },
 ]]));
 function mockRoutes(q) {
   const s = String(q || "").toLowerCase();
@@ -754,6 +803,87 @@ function busIconHtml() {
 }
 
 /* ========================================================
+   시나리오 미리보기 (하단 탭) — 실제 도착을 기다리지 않고 상태·모션 확인
+======================================================== */
+const DEMO_WATCH = {
+  id: "__demo__",
+  busRouteId: "demo",
+  routeName: "9802",
+  routeType: "6",
+  color: routeColor("6"),
+  stId: "demo",
+  arsId: "32008",
+  stationName: "논현역",
+  ord: 1,
+  walkSeconds: 300, // 도보 5분 기준으로 나가기 타이머 시연
+  nickname: "미리보기",
+};
+
+const DEMO_SCENARIOS = {
+  far:      () => ({ remainSec: 8 * 60 + 20, remainStops: 6 }),
+  near:     () => ({ remainSec: 3 * 60 + 12, remainStops: 3 }),
+  arriving: () => ({ special: "arriving", remainSec: 0, remainStops: 0 }),
+  leave:    () => ({ remainSec: 295, remainStops: 3 }),  // 도보 300초 → "지금 나가세요"
+  missed:   () => ({ remainSec: 90, remainStops: 1 }),   // 도보보다 빨리 도착 → "이번 버스는 어려워요"
+  ended:    () => ({ special: "ended" }),
+};
+
+function demoArrival(v) {
+  return {
+    remainSec: v.remainSec ?? null,
+    remainStops: v.remainStops ?? null,
+    currentLoc: "",
+    isArriving: v.special === "arriving",
+    isLast: false,
+    special: v.special || null,
+    raw: "",
+  };
+}
+
+/* 데모 중엔 데모 카드만, 아니면 등록 목록 */
+function activeWatchList() {
+  return STATE.demo ? [DEMO_WATCH] : CONFIG.watches;
+}
+
+function setDemo(scn) {
+  if (STATE.demoTimer) { clearInterval(STATE.demoTimer); STATE.demoTimer = null; }
+  STATE.demo = scn === "live" ? null : scn;
+  document.querySelectorAll("#demo-bar button").forEach(b =>
+    b.classList.toggle("on", b.dataset.scn === scn));
+
+  if (!STATE.demo) {
+    STATE.perWatch.delete(DEMO_WATCH.id);
+    setStatus("ok", "실시간");
+    renderList();
+    refreshAll(true);
+    return;
+  }
+
+  if (scn === "play") {
+    // 접근 전체 과정을 약 20초로 압축 재생 (35배속)
+    let sec = 11 * 60;
+    const step = () => {
+      sec -= 18;
+      if (sec <= -40) sec = 11 * 60;
+      const v = sec <= 25
+        ? { special: "arriving", remainSec: 0, remainStops: 0 }
+        : { remainSec: Math.max(0, sec), remainStops: clamp(Math.ceil(sec / 85), 1, 8) };
+      STATE.perWatch.set(DEMO_WATCH.id, { fetchedAt: Date.now(), arrivals: [demoArrival(v)], stationName: DEMO_WATCH.stationName });
+      const card = document.querySelector(`.bus-card[data-watch-id="${DEMO_WATCH.id}"]`);
+      if (card) updateCardDynamic(card, DEMO_WATCH);
+    };
+    STATE.perWatch.set(DEMO_WATCH.id, { fetchedAt: Date.now(), arrivals: [demoArrival({ remainSec: sec, remainStops: 8 })], stationName: DEMO_WATCH.stationName });
+    STATE.demoTimer = setInterval(step, 500);
+  } else {
+    const v = DEMO_SCENARIOS[scn]();
+    STATE.perWatch.set(DEMO_WATCH.id, { fetchedAt: Date.now(), arrivals: [demoArrival(v)], stationName: DEMO_WATCH.stationName });
+  }
+  const label = document.querySelector(`#demo-bar [data-scn="${scn}"]`)?.textContent || scn;
+  setStatus("ok", "미리보기 · " + label);
+  renderList();
+}
+
+/* ========================================================
    페이지 전환
 ======================================================== */
 const PAGES = ["list", "settings", "help"];
@@ -796,7 +926,8 @@ function updateUpdatedText() {
 function renderList() {
   const list = $("bus-list");
   list.innerHTML = "";
-  if (!CONFIG.watches.length) {
+  const watches = activeWatchList();
+  if (!watches.length) {
     list.innerHTML = `
       <div class="empty">
         아직 등록한 버스가 없어요.<br />
@@ -806,7 +937,7 @@ function renderList() {
     $("empty-open-settings").onclick = () => { showPage("settings"); syncSettingsUI(); };
     return;
   }
-  for (const w of CONFIG.watches) list.appendChild(renderCard(w));
+  for (const w of watches) list.appendChild(renderCard(w));
 }
 
 function renderCard(w) {
@@ -896,7 +1027,7 @@ function updateCardDynamic(card, w) {
 function tick() {
   updateUpdatedText();
   updateActiveBadge();
-  for (const w of CONFIG.watches) {
+  for (const w of activeWatchList()) {
     const card = document.querySelector(`.bus-card[data-watch-id="${CSS.escape(w.id)}"]`);
     if (card) updateCardDynamic(card, w);
   }
@@ -906,6 +1037,7 @@ function tick() {
    API 호출 · 새로고침
 ======================================================== */
 async function refreshAll(manual = false) {
+  if (STATE.demo) return; // 미리보기 중엔 실데이터로 덮어쓰지 않음
   if (!CONFIG.watches.length) return;
   const active = isActiveWindow();
   if (!active && !manual) return;
@@ -1222,6 +1354,10 @@ function bindEvents() {
 
   bindAutocomplete();
   bindIconUpload();
+
+  document.querySelectorAll("#demo-bar button").forEach(b => {
+    b.onclick = () => setDemo(b.dataset.scn);
+  });
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && isActiveWindow()) refreshAll(false);
