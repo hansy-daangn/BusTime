@@ -352,9 +352,13 @@
           <div class="help-text">브라우저가 직접 호출을 막으면(CORS) <code>python proxy.py</code> 실행 후 이 주소로 우회합니다.</div>
         </div>
         <div class="field">
-          <label>서비스 키 (기본 내장)</label>
-          <input id="input-key" placeholder="서울시 열린데이터광장 서비스 키" />
-          <div class="help-text">이미 내장돼 있어 바꿀 필요 없어요. 본인 키로 교체도 가능. <a href="#" id="link-help">발급 방법</a></div>
+          <label>기본 키 (내장 · 공공데이터포털)</label>
+          <input id="input-key" placeholder="공공데이터포털 서비스 키" />
+          <div class="help-text">기능당 1,000회/일. 이미 내장돼 있어 바꿀 필요 없어요. <a href="#" id="link-help">발급 방법</a></div>
+        </div>
+        <div class="field">
+          <label>보조 키 (기본 키 실패 시 자동 사용)</label>
+          <input id="input-key2" placeholder="서울 열린데이터광장 서비스 키" />
         </div>
 
         <h2>활성 시간대</h2>
@@ -425,11 +429,17 @@
 
       <!-- 도움말 -->
       <div id="page-help" class="page" style="display:none">
-        <h2>1. 서비스 키</h2>
+        <h2>1. 서비스 키 · 일일 한도</h2>
         <div class="help-block">
-          키는 <strong>이미 내장</strong>돼 있어 바로 실데이터가 나옵니다.
-          본인 키로 바꾸려면: <a href="https://data.seoul.go.kr" target="_blank">서울 열린데이터 광장</a> 로그인 →
-          "버스도착정보" 검색 → 인증키 신청(즉시 승인) → 설정의 서비스 키 칸에 교체.
+          키는 <strong>기본·보조 2개가 내장</strong>돼 있어 바로 실데이터가 나옵니다.
+          기본 키가 실패하면 보조 키로 자동 전환돼요.
+          <div class="help-text" style="margin-top:6px">
+            기본 키(공공데이터포털)는 도착정보 기능당 <strong>1,000회/일</strong> 한도.
+            위젯이 도착·출발 임박 때만 촘촘히(20초), 멀 때는 느슨하게(60초+) 호출해 한도를 아낍니다.
+            하단 상태바에서 오늘 호출 수를 확인할 수 있어요.
+          </div>
+          본인 키로 바꾸려면: <a href="https://www.data.go.kr" target="_blank">공공데이터포털</a>에서
+          "서울특별시_버스도착정보조회 서비스" 활용신청 → 발급 키를 설정에 교체.
         </div>
 
         <h2>2. 데이터가 안 나올 때</h2>
@@ -486,11 +496,13 @@
 ======================================================== */
 const STORAGE_KEY = "bus-widget:v2";
 
-const BUILTIN_SERVICE_KEY = "415a747a446c616c37347865656359";
+const BUILTIN_SERVICE_KEY = "103d031fdbaba0a5eda7fe2dec3364d1abb0ae850ceb9ee99b4b0f435e9267de"; // 기본 (공공데이터포털, 기능당 1,000회/일)
+const BUILTIN_BACKUP_KEY  = "415a747a446c616c37347865656359"; // 보조 (서울 열린데이터광장)
 
 const DEFAULTS = {
   mode: "auto",              // auto: 직접 호출 → 실패 시 프록시 폴백
   serviceKey: BUILTIN_SERVICE_KEY,
+  serviceKeyBackup: BUILTIN_BACKUP_KEY,
   proxyUrl: "http://localhost:8787",
   activeStart: "07:30",
   activeEnd: "09:30",
@@ -529,9 +541,12 @@ const STATE = {
 /* 외부에서 온 설정(localStorage·가져오기)은 신뢰하지 않고 정규화 */
 function normalizeConfig(cfg) {
   const c = { ...structuredClone(DEFAULTS), ...(cfg && typeof cfg === "object" ? cfg : {}) };
-  // 구버전 설정 이행: mock 모드 폐지, 빈 키는 내장 키로
+  // 구버전 설정 이행: mock 모드 폐지, 빈 키는 내장 키로, 구 기본 키는 보조로 강등
   if (!["auto", "direct", "proxy"].includes(c.mode)) c.mode = "auto";
-  if (typeof c.serviceKey !== "string" || !c.serviceKey.trim()) c.serviceKey = BUILTIN_SERVICE_KEY;
+  if (typeof c.serviceKey !== "string" || !c.serviceKey.trim() || c.serviceKey === BUILTIN_BACKUP_KEY) {
+    c.serviceKey = BUILTIN_SERVICE_KEY;
+  }
+  if (typeof c.serviceKeyBackup !== "string" || !c.serviceKeyBackup.trim()) c.serviceKeyBackup = BUILTIN_BACKUP_KEY;
   if (typeof c.busIcon !== "string" || !c.busIcon) c.busIcon = "preset-1";
   if (!/^\d{1,2}:\d{2}$/.test(String(c.activeStart))) c.activeStart = DEFAULTS.activeStart;
   if (!/^\d{1,2}:\d{2}$/.test(String(c.activeEnd))) c.activeEnd = DEFAULTS.activeEnd;
@@ -598,10 +613,9 @@ const API = {
   busPos:      `${API_BASE}/buspos/getBusPosByRtid`,
 };
 
-function buildFetchUrl(endpoint, params, via) {
+function buildFetchUrl(endpoint, params, via, key) {
   const sp = new URLSearchParams({ ...params, resultType: "json" });
   let qs = sp.toString();
-  const key = CONFIG.serviceKey.trim();
   // 발급 키가 이미 URL 인코딩된 형태(% 포함)면 그대로, 아니면 인코딩해서 붙인다
   if (key) qs += "&serviceKey=" + (key.includes("%") ? key : encodeURIComponent(key));
   const upstream = endpoint + "?" + qs;
@@ -612,10 +626,23 @@ function buildFetchUrl(endpoint, params, via) {
   return upstream;
 }
 
-async function apiGetVia(endpoint, params, via) {
-  const res = await fetch(buildFetchUrl(endpoint, params, via), { cache: "no-store" });
+/* 일일 호출량 추적 (한도: 공공데이터포털 기능당 1,000회/일) */
+function bumpUsage() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!CONFIG.usage || CONFIG.usage.date !== today) CONFIG.usage = { date: today, calls: 0 };
+  CONFIG.usage.calls++;
+  save();
+}
+function todayCalls() {
+  const today = new Date().toISOString().slice(0, 10);
+  return CONFIG.usage && CONFIG.usage.date === today ? CONFIG.usage.calls : 0;
+}
+
+async function apiGetVia(endpoint, params, via, key) {
+  bumpUsage();
+  const res = await fetch(buildFetchUrl(endpoint, params, via, key), { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
+  const data = await res.json(); // 키 오류 시 XML이 와서 여기서 throw → 다음 키로
   const header = data.msgHeader || data.MsgHeader || {};
   if (header.headerCd != null && String(header.headerCd) !== "0") {
     throw new Error(String(header.headerMsg || "API 오류"));
@@ -629,14 +656,18 @@ async function apiGetVia(endpoint, params, via) {
 }
 
 async function apiGet(endpoint, params) {
-  if (!CONFIG.serviceKey.trim()) throw new Error("서비스 키가 없어요.");
+  const keys = [...new Set([CONFIG.serviceKey, CONFIG.serviceKeyBackup].map(k => (k || "").trim()).filter(Boolean))];
+  if (!keys.length) throw new Error("서비스 키가 없어요.");
   const vias = CONFIG.mode === "auto" ? ["direct", "proxy"] : [CONFIG.mode];
   let lastErr;
   for (const via of vias) {
-    try {
-      return await apiGetVia(endpoint, params, via);
-    } catch (e) {
-      lastErr = e;
+    for (const key of keys) {
+      try {
+        return await apiGetVia(endpoint, params, via, key);
+      } catch (e) {
+        lastErr = e;
+        if (e instanceof TypeError) break; // 네트워크/CORS — 키를 바꿔도 소용없으니 다음 경로로
+      }
     }
   }
   // 직접 호출이 CORS로 막히고 프록시도 죽어 있으면 여기로 온다
@@ -897,9 +928,12 @@ function updateActiveBadge() {
 }
 function updateUpdatedText() {
   const el = $("status-updated");
-  if (!STATE.lastUpdatedAt) { el.textContent = ""; return; }
+  const calls = todayCalls();
+  const usage = calls ? `오늘 ${calls}회` : "";
+  if (!STATE.lastUpdatedAt) { el.textContent = usage; return; }
   const sec = Math.round((Date.now() - STATE.lastUpdatedAt) / 1000);
-  el.textContent = sec < 5 ? "방금" : `${sec}초 전`;
+  const ago = sec < 5 ? "방금" : `${sec}초 전`;
+  el.textContent = usage ? `${ago} · ${usage}` : ago;
 }
 
 /* ========================================================
@@ -1058,14 +1092,38 @@ async function refreshAll(manual = false) {
   renderList();
 }
 
+/* 적응형 폴링 주기: 도착·출발이 임박하면 촘촘히, 멀면 느슨하게 — 일일 한도 절약
+   (API 데이터 자체가 20~30초 주기 갱신이라 20초 밑으로는 의미 없음) */
+function nextPollDelay() {
+  const base = Math.max(10, Number(CONFIG.refreshSeconds) || 30);
+  let minSec = Infinity;
+  for (const w of CONFIG.watches) {
+    const s = STATE.perWatch.get(w.id);
+    const a = s?.arrivals?.[0];
+    if (!a) continue;
+    if (a.special === "arriving") { minSec = 0; break; }
+    if (a.remainSec == null) continue;
+    const elapsed = s.fetchedAt ? (Date.now() - s.fetchedAt) / 1000 : 0;
+    const d = Math.max(0, a.remainSec - elapsed);
+    const walk = Number(w.walkSeconds) || 0;
+    // 출발해야 하는 순간(도착 - 도보)이 다가올 때도 도착만큼 중요하다
+    minSec = Math.min(minSec, walk ? Math.max(0, d - walk) : d);
+  }
+  if (minSec <= 180) return Math.min(base, 20); // 3분 이내: 촘촘히
+  if (minSec <= 600) return base;               // 10분 이내: 기본
+  return Math.max(base * 2, 60);                // 멀거나 정보 없음: 느슨히
+}
+
 function scheduleTimers() {
-  if (STATE.refreshTimer) clearInterval(STATE.refreshTimer);
+  if (STATE.refreshTimer) clearTimeout(STATE.refreshTimer);
   if (STATE.tickTimer) clearInterval(STATE.tickTimer);
-  const sec = Math.max(10, Number(CONFIG.refreshSeconds) || 30);
-  STATE.refreshTimer = setInterval(() => {
-    if (document.hidden) return;
-    if (isActiveWindow()) refreshAll(false);
-  }, sec * 1000);
+  const loop = () => {
+    STATE.refreshTimer = setTimeout(async () => {
+      if (!document.hidden && isActiveWindow()) await refreshAll(false);
+      loop();
+    }, nextPollDelay() * 1000);
+  };
+  loop();
   STATE.tickTimer = setInterval(tick, 1000);
 }
 
@@ -1278,6 +1336,7 @@ function syncSettingsUI() {
   $("proxy-field").style.display = CONFIG.mode === "direct" ? "none" : "";
   $("input-proxy").value = CONFIG.proxyUrl;
   $("input-key").value = CONFIG.serviceKey;
+  $("input-key2").value = CONFIG.serviceKeyBackup;
   $("input-start").value = CONFIG.activeStart;
   $("input-end").value = CONFIG.activeEnd;
   $("input-refresh").value = CONFIG.refreshSeconds;
@@ -1304,6 +1363,7 @@ function bindEvents() {
   };
   $("input-proxy").oninput = e => { CONFIG.proxyUrl = e.target.value; save(); };
   $("input-key").oninput = e => { CONFIG.serviceKey = e.target.value; save(); };
+  $("input-key2").oninput = e => { CONFIG.serviceKeyBackup = e.target.value; save(); };
   $("input-start").onchange = e => { CONFIG.activeStart = e.target.value; save(); updateActiveBadge(); };
   $("input-end").onchange = e => { CONFIG.activeEnd = e.target.value; save(); updateActiveBadge(); };
   $("input-refresh").onchange = e => {
