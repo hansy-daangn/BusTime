@@ -21,7 +21,7 @@ from urllib.error import HTTPError, URLError
 import re
 import sys
 
-ALLOWED_HOSTS = {"ws.bus.go.kr"}
+ALLOWED_HOSTS = {"apis.data.go.kr", "ws.bus.go.kr"}
 DEFAULT_PORT = 8787
 
 

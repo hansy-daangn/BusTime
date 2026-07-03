@@ -40,23 +40,24 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 - 워크플로가 `actions/configure-pages@v4 (enablement: true)`로 Pages를 자동 활성화한다.
 - **수정 완료 시마다 브랜치 → PR → main 머지까지가 한 사이클.** 사용자는 위 링크로만 확인한다.
 
-## API (서울시, ws.bus.go.kr/api/rest)
+## API (국토교통부 TAGO, https://apis.data.go.kr/1613000) — 2026-07-03 전환
 
 | 용도 | 엔드포인트 | 비고 |
 |---|---|---|
-| 노선 검색 | `busRouteInfo/getBusRouteList?strSrch=` | 자동완성 |
-| 노선 정류장 | `busRouteInfo/getStaionByRoute?busRouteId=` | 오타(Staion)가 공식 스펙. 정류장 ID 필드는 `station` |
-| 도착 정보 | `arrive/getArrInfoByRoute?stId=&busRouteId=&ord=` | 핵심. `traTime1`(초), `arrmsg1`("3분30초후[2번째 전]"), `isArrive1`, `isLast1` |
+| 노선 검색 | `BusRouteInfoInqireService/getRouteNoList?cityCode=&routeNo=` | **활용신청 필요(미승인 시 403)** |
+| 경유 정류소 | `BusRouteInfoInqireService/getRouteAcctoThrghSttnList?cityCode=&routeId=` | `nodeid/nodenm/nodeord/gpslati` |
+| 도착 정보 | `ArvlInfoInqireService/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList?cityCode=&nodeId=&routeId=` | **승인·인증 확인 완료.** `arrtime`(초), `arrprevstationcnt`(남은 정거장 숫자!) |
 
-- `resultType=json` 파라미터로 JSON 응답.
-- 키 오류 시 data.go.kr 게이트웨이가 **XML**을 반환 → `res.json()` throw → 다음 키로 폴백하는 구조.
-- `arrmsg`의 `[N번째 전]`에서 남은 정거장 파싱. "곧 도착", "출발 대기", "운행 종료"는 special 상태.
+- `_type=json`. 응답: `response.header.resultCode("00")`, `response.body.items.item` — item이 **단일 객체**이거나 items가 **빈 문자열**일 수 있음(정규화 필수).
+- HTTPS 지원 → Pages에서 mixed content 문제 없음. 단 CORS 헤더는 없어서 브라우저 직접 호출은 여전히 차단 → 프록시 폴백.
+- 버스 한 대 = item 하나. 도착 임박(≤30초)을 arriving으로 간주. 빈 목록 = "도착 예정 없음".
+- TAGO는 **서울시 미포함** — 도시 목록 상수 `CITY_CODES`(인천 23 + 경기 주요). 서울 면허 노선이 필요해지면 서울시 API 키 별도 발급.
 
-## 서비스 키 (2개 내장, JS 상수)
+## 서비스 키 (JS 상수)
 
-- **기본** `BUILTIN_SERVICE_KEY` (공공데이터포털): 도착정보 4기능 승인, **기능당 1,000회/일**.
-  노선/정류장 검색은 미승인일 수 있음 → 실패 시 자동으로 보조 키 사용.
-- **보조** `BUILTIN_BACKUP_KEY` (서울 열린데이터광장): 전 기능 폴백.
+- **기본** `BUILTIN_SERVICE_KEY` (공공데이터포털 103d…): **국토교통부_(TAGO)_버스도착정보 승인·인증 실측 확인**(2026-07-03, resultCode 00). 1,000회/일.
+  - 노선·정류소 검색은 **국토교통부_(TAGO)_버스노선정보 / 버스정류소정보** 활용신청(자동승인)이 추가로 필요 — 미승인 시 403 → 앱이 "미승인 API — 활용신청 필요"로 안내.
+- **보조** `BUILTIN_BACKUP_KEY` (415a…): ws.bus.go.kr 기준 무효 판명. 자리만 유지.
 - 호출 순서: (직접 or 프록시) × (기본 → 보조). 네트워크 오류(TypeError)는 키 교체 없이 다음 경로로.
 
 ## 트래픽 설계 (변경 시 재계산 필수)
@@ -67,7 +68,15 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 - 결과: 일 ~600회 (한도의 60%). 화면은 로컬 카운트다운(매초)이라 폴링이 느슨해도 끊겨 보이지 않는다.
 - 사용량 카운터가 localStorage에 쌓이고 개발자 빌드 상태바에만 표시.
 
-## 실 API 검증 결과 (2026-07-02, 샌드박스에서 r.jina.ai 릴레이로 실측)
+## 실 API 검증 결과 2차 (2026-07-03) — TAGO 전환 근거
+
+- ✅ **TAGO 도착정보 인증 성공**: `ArvlInfoInqireService` 호출 → `resultCode 00 NORMAL SERVICE` (apis.data.go.kr는 HTTPS라 샌드박스에서 직접 실측).
+- ❌ TAGO 버스노선정보/버스정류소정보 → HTTP 403 Forbidden (활용신청 안 된 상태).
+- ❌ 서울시 계열(ws.bus.go.kr)은 이 키로 전부 "SERVICE KEY IS NOT REGISTERED" — 키는 TAGO 전용.
+- 사용자 계정 승인 화면 확인: 국토교통부_(TAGO)_버스도착정보, End Point `https://apis.data.go.kr/1613000/ArvlInfoInqireService`, 활용기간 2026-07-03~.
+- 9802·논현역 자동 확정(resolveWatch)은 노선정보 서비스 승인 후 첫 조회 때 이뤄짐. 인천 논현동 동명 정류장과의 혼동은 `hintLat`(서울 논현역 37.5112) 최근접 매칭으로 방지 — 스텁 검증 완료.
+
+## 실 API 검증 결과 1차 (2026-07-02, r.jina.ai 릴레이 실측 — 서울 API 시절)
 
 - ✅ `ws.bus.go.kr` 응답 확인. `resultType=json` 동작 (data.go.kr 문서엔 XML만 표기돼 있지만 백엔드는 JSON 지원 — 오류 응답도 JSON으로 수신됨).
 - ✅ 응답 스키마 = 코드 기대와 일치 (`msgHeader.headerCd/headerMsg`, `msgBody.itemList`). headerCd ≠ "0" 오류 경로 실동작 확인.
