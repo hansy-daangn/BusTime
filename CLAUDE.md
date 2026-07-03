@@ -40,7 +40,18 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 - 워크플로가 `actions/configure-pages@v4 (enablement: true)`로 Pages를 자동 활성화한다.
 - **수정 완료 시마다 브랜치 → PR → main 머지까지가 한 사이클.** 사용자는 위 링크로만 확인한다.
 
-## API (국토교통부 TAGO, https://apis.data.go.kr/1613000) — 2026-07-03 전환
+## API 이중 백엔드 (2026-07-03 확장)
+
+앱은 **두 백엔드를 병렬로 사용**한다. 검색은 서울+선택 도시를 동시에 조회해 병합 (`searchRoutesAll`),
+watch에 `src: "seoul"|"tago"` 저장, 도착 조회·파서도 src별 분기.
+
+### SEOUL (ws.bus.go.kr/api/rest) — 서울 면허 노선용
+- 노선검색 `busRouteInfo/getBusRouteList?strSrch=` / 정류장 `busRouteInfo/getStaionByRoute?busRouteId=` / 도착 `arrive/getArrInfoByRoute?stId=&busRouteId=&ord=`
+- `resultType=json`. 응답 `msgHeader.headerCd("0")`, `msgBody.itemList`.
+- 도착은 item 하나에 1·2번째 버스(traTime1/2, arrmsg1/2 "[N번째 전]" 파싱, isArrive/isLast).
+- **키 상태: 아직 SERVICE KEY IS NOT REGISTERED** — 서울특별시_버스도착정보조회 활용신청의 인증모듈 전파 대기(수 시간 걸릴 수 있음). 승인 전파되면 코드 수정 없이 작동.
+
+### TAGO (apis.data.go.kr/1613000) — 인천·경기 (9802 등)
 
 | 용도 | 엔드포인트 | 비고 |
 |---|---|---|
