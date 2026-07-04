@@ -79,6 +79,17 @@ watch에 `src: "seoul"|"tago"` 저장, 도착 조회·파서도 src별 분기.
 - 결과: 일 ~600회 (한도의 60%). 화면은 로컬 카운트다운(매초)이라 폴링이 느슨해도 끊겨 보이지 않는다.
 - 사용량 카운터가 localStorage에 쌓이고 개발자 빌드 상태바에만 표시.
 
+## 실 API 검증 결과 3차 (2026-07-04) — 9802·논현역 실데이터 성공 ✅
+
+- **확정 ID** (인천 BIS 공개 조회 `bus.incheon.go.kr/inq/selectRouteDetailInfo.do?routeid=165000303`를 r.jina.ai로 우회 확보 후, 승인된 TAGO 도착정보로 오라클 검증):
+  - 9802 = 인천 BIS `165000303` → TAGO **`ICB165000303`** (신강교통, 한전사거리↔시민의숲.양재꽃시장)
+  - 논현역(ARS 32008, 인천 방향) = **`ICB121000014`** / 반대편 강남 방향(32007) = `ICB121000013`
+  - TAGO ID 규칙 실측: **"ICB" + BIS ID**. 서울 소재 광역 정류소도 인천 BIS ID로 등록됨.
+- **실데이터 수신**: `getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList(23, ICB121000014, ICB165000303)` → 9802 두 대 (446초·2정거장 전 / 2652초·15정거장 전).
+- **CORS 실측**: apis.data.go.kr가 `Access-Control-Allow-Origin: *` 반환 (403 응답 포함) → **Pages에서 프록시 없이 직접 호출 가능**. 도착정보는 이제 브라우저만으로 작동.
+- 기본 워치는 확정 ID 내장(pending 제거). 검색·신규 등록만 노선/정류소 서비스 승인(403 해제) 대기.
+- `getCtyCodeList`(승인 서비스 하위 기능) 실측: 인천 23, 수원 31010, 성남 31020 등 — 서울(11)은 TAGO 도착정보에 없음 확인.
+
 ## 실 API 검증 결과 2차 (2026-07-03) — TAGO 전환 근거
 
 - ✅ **TAGO 도착정보 인증 성공**: `ArvlInfoInqireService` 호출 → `resultCode 00 NORMAL SERVICE` (apis.data.go.kr는 HTTPS라 샌드박스에서 직접 실측).
