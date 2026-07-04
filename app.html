@@ -455,18 +455,16 @@ const POLL = { near: 60, mid: 120, far: 240 };
 
 const DEFAULT_WATCH = {
   id: "default-9802-nonhyeon",
-  src: "tago",             // 9802는 인천 면허 광역버스 → TAGO 백엔드 (서울시 API에는 없음)
+  src: "tago",             // 9802는 인천 면허 광역버스 (서울시 API에는 없음)
   cityCode: "23",          // 인천
-  routeId: null,           // 첫 조회 때 실 API로 자동 확정 (pending)
+  routeId: "ICB165000303", // 실측 확정 (2026-07-04, 인천 BIS 165000303 → TAGO ICB 접두)
   routeName: "9802",
   routeType: "광역버스",
   color: "#e51937",
-  nodeId: null,
+  nodeId: "ICB121000014",  // 논현역 (ARS 32008, 인천 방향) — 실측 확정
   stationName: "논현역",
-  hintLat: 37.5112,        // 서울 논현역 위도 — 인천 논현동 동명 정류장과 구분용
-  ord: null,
+  ord: 161,
   walkSeconds: 300,
-  pending: true,
 };
 
 const DEFAULTS = {
@@ -519,8 +517,8 @@ function normalizeConfig(cfg) {
 }
 function normalizeWatch(w) {
   if (!w || typeof w !== "object") return structuredClone(DEFAULT_WATCH);
-  // 구버전 저장분(src 필드 없음)은 재확정하도록 리셋
-  if (!w.src || w.stId !== undefined || w.busRouteId !== undefined) {
+  // 관리되는 기본 항목은 항상 최신 확정값으로 교체, 구버전 저장분(src 없음)도 리셋
+  if (w.id === "default-9802-nonhyeon" || !w.src || w.stId !== undefined || w.busRouteId !== undefined) {
     return structuredClone(DEFAULT_WATCH);
   }
   return {
