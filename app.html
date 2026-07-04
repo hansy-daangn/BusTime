@@ -352,25 +352,10 @@
         </div>
 
         <!-- DEV:START -->
-        <h2>개발자 · 연결</h2>
+        <h2>개발자</h2>
         <div class="field">
-          <select id="input-mode">
-            <option value="auto">자동 (직접 호출 → 실패 시 프록시)</option>
-            <option value="direct">직접 호출만</option>
-            <option value="proxy">로컬 프록시만</option>
-          </select>
-        </div>
-        <div id="proxy-field" class="field">
-          <label>프록시 URL</label>
-          <input id="input-proxy" placeholder="http://localhost:8787" />
-        </div>
-        <div class="field">
-          <label>기본 키 (공공데이터포털 · 1,000회/일)</label>
+          <label>서비스 키 (공공데이터포털 · 기능당 1,000회/일)</label>
           <input id="input-key" />
-        </div>
-        <div class="field">
-          <label>보조 키 (기본 실패 시 자동 전환)</label>
-          <input id="input-key2" />
         </div>
         <!-- DEV:END -->
       </div>
@@ -380,16 +365,15 @@
       <div id="page-help" class="page" style="display:none">
         <h2>연결 구조</h2>
         <div class="help-block">
-          데이터는 항상 <strong>국토교통부 TAGO 실 API</strong>(apis.data.go.kr)에서 옵니다.
-          <code>proxy.py</code>는 가짜 데이터가 아니라 <strong>실데이터를 그대로 중계</strong>하는
-          우회로예요 — 브라우저가 보안 정책(CORS)으로 API 직접 호출을 막을 때만 사용됩니다.
-          <pre>python proxy.py</pre>
-          연결 모드 "자동"이면 직접 호출 실패 시 프록시로 자동 폴백.
-          <div class="help-text" style="margin-top:6px">
-            검색·자동확정이 "미승인 API" 오류를 내면 data.go.kr에서
-            <strong>국토교통부_(TAGO)_버스노선정보</strong>,
-            <strong>국토교통부_(TAGO)_버스정류소정보</strong> 활용신청(자동승인) 필요.
-            도착정보는 이미 승인·인증 확인됨(2026-07-03).
+          항상 <strong>실 API</strong>. 프록시·중계기 불필요.
+          <ul style="margin:6px 0;padding-left:16px">
+            <li><strong>인천·경기(TAGO)</strong>: apis.data.go.kr — HTTPS+CORS 허용, 브라우저 직접 호출 (실측 확인)</li>
+            <li><strong>서울 도착</strong>: ws.bus.go.kr(HTTP) — direct 실패 시 공용 릴레이(allorigins) 폴백</li>
+            <li><strong>서울 검색·정류소</strong>: 정적 스냅샷(내장 인덱스 718노선 + data/seoul/*.json) — API 0회</li>
+          </ul>
+          <div class="help-text">
+            서울 도착정보는 키가 서울 인증서버에 등록 전파돼야 작동 (현재 대기, 매시간 자동 감시).
+            인천·경기 검색은 TAGO 버스노선정보/버스정류소정보 활용신청 승인 시 활성화.
           </div>
         </div>
         <h2>트래픽 규칙</h2>
@@ -451,8 +435,7 @@
 ======================================================== */
 const STORAGE_KEY = "bus-widget:v2";
 
-const BUILTIN_SERVICE_KEY = "103d031fdbaba0a5eda7fe2dec3364d1abb0ae850ceb9ee99b4b0f435e9267de"; // 기본 (공공데이터포털, 기능당 1,000회/일)
-const BUILTIN_BACKUP_KEY  = "415a747a446c616c37347865656359"; // 보조 (서울 열린데이터광장)
+const BUILTIN_SERVICE_KEY = "103d031fdbaba0a5eda7fe2dec3364d1abb0ae850ceb9ee99b4b0f435e9267de"; // 공공데이터포털 (기능당 1,000회/일)
 
 /* 트래픽 규칙 (일 1,000회 한도, 4명 공유 가정):
    ① 관심 시간대(기본 18:30–21:00) 안에서만 자동 갱신
@@ -478,10 +461,7 @@ const DEFAULT_WATCH = {
 };
 
 const DEFAULTS = {
-  mode: "auto",              // auto: 직접 호출 → 실패 시 프록시 폴백
   serviceKey: BUILTIN_SERVICE_KEY,
-  serviceKeyBackup: BUILTIN_BACKUP_KEY,
-  proxyUrl: "http://localhost:8787",
   activeStart: "18:30",   // 관심 시간대 기본: 퇴근 (18:30–21:00)
   activeEnd: "21:00",
   activeDays: [1, 2, 3, 4, 5],
@@ -509,11 +489,8 @@ const STATE = {
 function normalizeConfig(cfg) {
   const src = cfg && typeof cfg === "object" ? cfg : {};
   const c = { ...structuredClone(DEFAULTS), ...src };
-  if (!["auto", "direct", "proxy"].includes(c.mode)) c.mode = "auto";
-  if (typeof c.serviceKey !== "string" || !c.serviceKey.trim() || c.serviceKey === BUILTIN_BACKUP_KEY) {
-    c.serviceKey = BUILTIN_SERVICE_KEY;
-  }
-  if (typeof c.serviceKeyBackup !== "string" || !c.serviceKeyBackup.trim()) c.serviceKeyBackup = BUILTIN_BACKUP_KEY;
+  delete c.mode; delete c.proxyUrl; delete c.serviceKeyBackup; // 구버전 필드 정리
+  if (typeof c.serviceKey !== "string" || !c.serviceKey.trim()) c.serviceKey = BUILTIN_SERVICE_KEY;
   if (typeof c.busIcon !== "string" || !c.busIcon) c.busIcon = "preset-1";
   if (!/^\d{1,2}:\d{2}$/.test(String(c.activeStart))) c.activeStart = DEFAULTS.activeStart;
   if (!/^\d{1,2}:\d{2}$/.test(String(c.activeEnd))) c.activeEnd = DEFAULTS.activeEnd;
@@ -584,9 +561,9 @@ function fmtTime(sec) {
 }
 
 /* ========================================================
-   실 API 이중 백엔드 — proxy.py는 실데이터를 그대로 중계(CORS 우회)할 뿐이다.
-   [TAGO]  국토교통부 (인천·경기) — 도착정보 인증 확인(2026-07-03). 노선/정류소는 활용신청 필요(403)
-   [SEOUL] 서울시 ws.bus.go.kr — 서울특별시_버스도착정보조회/노선정보조회 승인 전파 후 작동
+   실 API 이중 백엔드 (프록시 없음)
+   [TAGO]  apis.data.go.kr (인천·경기) — HTTPS+CORS, 브라우저 직접. 도착정보 인증 실측 확인
+   [SEOUL] 도착만 ws.bus.go.kr(HTTP, direct→relay 폴백) — 키 등록 전파 대기. 검색·정류소는 정적 스냅샷
 ======================================================== */
 const TAGO_BASE = "https://apis.data.go.kr/1613000";
 const SEOUL_BASE = "http://ws.bus.go.kr/api/rest";
@@ -630,12 +607,8 @@ function buildFetchUrl(family, endpoint, params, via, key) {
   // 발급 키가 이미 URL 인코딩된 형태(% 포함)면 그대로, 아니면 인코딩해서 붙인다
   if (key) qs += "&serviceKey=" + (key.includes("%") ? key : encodeURIComponent(key));
   const upstream = endpoint + "?" + qs;
-  if (via === "proxy") {
-    const p = (CONFIG.proxyUrl || "").replace(/\/$/, "");
-    return `${p}/proxy?url=${encodeURIComponent(upstream)}`;
-  }
   if (via === "relay") {
-    // 공용 CORS 릴레이 — 서울 API(HTTP)를 HTTPS 페이지에서 부를 마지막 수단
+    // 공용 CORS 릴레이 — 서울 API(HTTP)를 HTTPS 페이지에서 부를 폴백. TAGO는 direct에서 끝난다(HTTPS+CORS)
     return "https://api.allorigins.win/raw?url=" + encodeURIComponent(upstream);
   }
   return upstream;
@@ -681,23 +654,18 @@ async function apiGetVia(family, endpoint, params, via, key) {
 }
 
 async function apiGet(family, endpoint, params) {
-  const keys = [...new Set([CONFIG.serviceKey, CONFIG.serviceKeyBackup].map(k => (k || "").trim()).filter(Boolean))];
-  if (!keys.length) throw new Error("서비스 키가 없어요.");
-  const vias = CONFIG.mode === "auto" ? ["direct", "proxy", "relay"] : [CONFIG.mode];
+  const key = (CONFIG.serviceKey || "").trim();
+  if (!key) throw new Error("서비스 키가 없어요.");
   let lastErr;
-  for (const via of vias) {
-    for (const key of keys) {
-      try {
-        return await apiGetVia(family, endpoint, params, via, key);
-      } catch (e) {
-        lastErr = e;
-        if (e instanceof TypeError) break; // 네트워크/CORS — 키를 바꿔도 소용없으니 다음 경로로
-      }
+  for (const via of ["direct", "relay"]) {
+    try {
+      return await apiGetVia(family, endpoint, params, via, key);
+    } catch (e) {
+      lastErr = e;
+      if (!(e instanceof TypeError)) break; // API가 응답한 오류는 경로를 바꿔도 같다
     }
   }
-  if (CONFIG.mode !== "direct" && lastErr instanceof TypeError) {
-    throw new Error("연결 실패 — 네트워크 또는 중계기(proxy.py) 확인");
-  }
+  if (lastErr instanceof TypeError) throw new Error("연결 실패 — 네트워크 확인");
   throw lastErr;
 }
 
@@ -1437,13 +1405,7 @@ function syncSettingsUI() {
   renderDayPicker();
   renderIconGallery();
   // 개발자 필드 (사용자 빌드엔 없음)
-  if ($("input-mode")) {
-    $("input-mode").value = CONFIG.mode;
-    $("proxy-field").style.display = CONFIG.mode === "direct" ? "none" : "";
-    $("input-proxy").value = CONFIG.proxyUrl;
-    $("input-key").value = CONFIG.serviceKey;
-    $("input-key2").value = CONFIG.serviceKeyBackup;
-  }
+  if ($("input-key")) $("input-key").value = CONFIG.serviceKey;
 }
 
 /* ========================================================
@@ -1468,15 +1430,8 @@ function bindEvents() {
   $("btn-set-watch").onclick = setWatch;
 
   // 개발자 필드 (사용자 빌드엔 없음)
-  if ($("input-mode")) {
-    $("input-mode").onchange = e => {
-      CONFIG.mode = e.target.value;
-      $("proxy-field").style.display = CONFIG.mode === "direct" ? "none" : "";
-      save(); refreshAll(true);
-    };
-    $("input-proxy").oninput = e => { CONFIG.proxyUrl = e.target.value; save(); };
+  if ($("input-key")) {
     $("input-key").oninput = e => { CONFIG.serviceKey = e.target.value; save(); };
-    $("input-key2").oninput = e => { CONFIG.serviceKeyBackup = e.target.value; save(); };
   }
 
   bindAutocomplete();
