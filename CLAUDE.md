@@ -12,6 +12,7 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 1. **실 API 데이터만.** Mock/가짜 데이터 절대 금지. (proxy.py는 실데이터를 그대로 중계하는 CORS 우회일 뿐 — 가짜 아님)
 2. **버스 1대 · 정류장 1개만** 등록 가능. 새로 등록하면 기존 것 대체.
 3. **사용자 설정은 딱 5가지**: 시간대(+요일), 버스, 정류장, 이동시간(분), 버스 아이콘.
+   시간대(관심 시간대)는 **10분 단위** 선택, 기본값 **18:30–21:00**(퇴근).
    연결 모드·프록시·서비스 키·사용량·시나리오 탭·도움말은 **개발자 전용**.
 4. **라이트 미니멀 디자인** (다크 금지). 테두리 없는 흰 카드. 단, 게이지에 **정거장 눈금(원)** 필수 — "몇 정거장 남았고 얼마나 왔는지"가 핵심.
 5. **배포는 GitHub Pages 링크로.** 사용자는 링크로만 확인한다. 수정 완료 시마다 main에 머지해 자동 배포되게 할 것.
@@ -45,11 +46,16 @@ README는 사용자용으로 의도적으로 짧다. 상세는 여기에만 쓴�
 앱은 **두 백엔드를 병렬로 사용**한다. 검색은 서울+선택 도시를 동시에 조회해 병합 (`searchRoutesAll`),
 watch에 `src: "seoul"|"tago"` 저장, 도착 조회·파서도 src별 분기.
 
-### SEOUL (ws.bus.go.kr/api/rest) — 서울 면허 노선용
-- 노선검색 `busRouteInfo/getBusRouteList?strSrch=` / 정류장 `busRouteInfo/getStaionByRoute?busRouteId=` / 도착 `arrive/getArrInfoByRoute?stId=&busRouteId=&ord=`
-- `resultType=json`. 응답 `msgHeader.headerCd("0")`, `msgBody.itemList`.
-- 도착은 item 하나에 1·2번째 버스(traTime1/2, arrmsg1/2 "[N번째 전]" 파싱, isArrive/isLast).
-- **키 상태: 아직 SERVICE KEY IS NOT REGISTERED** — 서울특별시_버스도착정보조회 활용신청의 인증모듈 전파 대기(수 시간 걸릴 수 있음). 승인 전파되면 코드 수정 없이 작동.
+### SEOUL — 검색·정류소는 정적 스냅샷, 도착만 실시간(ws.bus.go.kr)
+- **노선 검색·정류소 목록은 API를 쓰지 않는다.** 서울 열린데이터광장 `busRteInfo`(노선×정류소 마스터 41,658행, 키 415a…로 접근 확인)를 미러링해서:
+  - 노선 인덱스(~600개)는 `app.html`에 `SEOUL_ROUTES`로 내장 (마커 `/*__SEOUL_ROUTES__*/`)
+  - 노선별 정류소는 `data/seoul/route-<ROUTE_ID>.json` 정적 파일 (Pages same-origin)
+  - 갱신 스크립트: scratchpad `gen_seoul_data.py` 참고. 노선 개편 시(연 1~2회) 재생성
+- 노선 유형은 번호 체계로 추정(`seoulTypeByNo`): N=심야, 9xxx=광역, 4자리=지선, 3자리=간선
+- 도착: `arrive/getArrInfoByRoute?stId=&busRouteId=&ord=` (`resultType=json`, msgHeader/msgBody)
+  — item 하나에 1·2번째 버스(traTime1/2, arrmsg1/2 "[N번째 전]", isArrive/isLast)
+- **키 상태: 여전히 SERVICE KEY IS NOT REGISTERED** (2026-07-04 재확인). 서울특별시_버스도착정보조회 승인 전파 대기 — 전파되면 코드 수정 없이 서울 도착도 작동
+- ws.bus는 HTTP라 Pages에서 직접 불가 → via 체인 direct→proxy→**relay**(allorigins 공용 CORS 릴레이) 폴백
 
 ### TAGO (apis.data.go.kr/1613000) — 인천·경기 (9802 등)
 
@@ -71,13 +77,15 @@ watch에 `src: "seoul"|"tago"` 저장, 도착 조회·파서도 src별 분기.
 - **보조** `BUILTIN_BACKUP_KEY` (415a…): ws.bus.go.kr 기준 무효 판명. 자리만 유지.
 - 호출 순서: (직접 or 프록시) × (기본 → 보조). 네트워크 오류(TypeError)는 키 교체 없이 다음 경로로.
 
-## 트래픽 설계 (변경 시 재계산 필수)
+## 트래픽 규칙 (변경 시 재계산 필수)
 
-- 가정: **4명이 키 1개 공유 × 1노선 × 일 4시간** 사용.
-- 폴링 상수 `POLL = { near: 60, mid: 120, far: 240 }` (초).
-  기준: 도착·출발(도보 차감) 3분 이내 near / 12분 이내 mid / 그 외 far.
-- 결과: 일 ~600회 (한도의 60%). 화면은 로컬 카운트다운(매초)이라 폴링이 느슨해도 끊겨 보이지 않는다.
-- 사용량 카운터가 localStorage에 쌓이고 개발자 빌드 상태바에만 표시.
+- 가정: **4명이 키 1개 공유 × 1노선**, 관심 시간대 기본 2.5시간(18:30–21:00).
+- ① 관심 시간대 안에서만 자동 갱신 (밖에서는 0회, 수동만 가능)
+- ② 적응형 주기 `POLL = { near: 60, mid: 120, far: 240 }` (초) — 도착·출발(도보 차감) 3분 이내 near / 12분 이내 mid / 그 외 far
+- ③ 안전 상한 `DAILY_CAP = 900` — 도달 시 자동 갱신 중지, 상태바 안내. 수동 새로고침은 15초 스로틀
+- ④ 탭 백그라운드면 스킵(document.hidden). 서울 검색·정류소는 정적 데이터라 API 0회
+- 결과: 1인 최악(내내 near) 150회/일 → 4인 600회(60%). 통상 ~350회. 화면은 매초 로컬 카운트다운이라 끊겨 보이지 않는다.
+- 사용량 카운터는 localStorage, 개발자 빌드 상태바에만 표시.
 
 ## 실 API 검증 결과 3차 (2026-07-04) — 9802·논현역 실데이터 성공 ✅
 
