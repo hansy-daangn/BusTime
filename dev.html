@@ -1,0 +1,1475 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>버스 도착 위젯</title>
+<style>
+  /* ----- 라이트 미니멀 ----- */
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1d1d1f;
+    --text-dim: #6e6e73;
+    --text-mute: #aeaeb2;
+    --hair: rgba(0, 0, 0, 0.06);
+    --field: #f2f2f4;
+    --accent: #0a84ff;
+    --danger: #e5484d;
+    --go: #f59f00;
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 8px 28px rgba(0,0,0,0.08);
+    --radius: 22px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 오버레이 컨테이너 */
+  #app {
+    position: fixed;
+    top: 16px; right: 16px;
+    width: 360px;
+    max-height: calc(100vh - 32px);
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- 헤더 ---------- */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 0;
+    user-select: none;
+  }
+  .title { font-weight: 600; font-size: 13px; color: var(--text-dim); letter-spacing: -0.01em; }
+  .badge {
+    margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 10px;
+    background: rgba(10,132,255,0.1); color: var(--accent);
+  }
+  .badge.off { background: var(--field); color: var(--text-mute); }
+  .actions { display: flex; gap: 0; opacity: 0; transition: opacity .2s; }
+  #app:hover .actions { opacity: 1; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: transparent; border: none; color: var(--text-mute);
+    cursor: pointer; font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover { background: var(--field); color: var(--text-dim); }
+  .icon-btn.active { color: var(--accent); }
+
+  /* ---------- 본문 ---------- */
+  .body { flex: 1 1 auto; overflow-y: auto; padding: 8px 16px 12px; }
+  .body::-webkit-scrollbar { width: 5px; }
+  .body::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+
+  .page > h2 {
+    margin: 18px 2px 8px;
+    font-size: 11px; color: var(--text-mute); font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; padding: 3px 0; position: relative; }
+  .field label { font-size: 11px; color: var(--text-dim); }
+  .field input, .field select {
+    background: var(--field); border: none; color: var(--text);
+    padding: 9px 11px; border-radius: 10px; font-size: 13px; font-family: inherit; outline: none;
+  }
+  .field input:focus, .field select:focus { box-shadow: 0 0 0 2px rgba(10,132,255,0.35); }
+  .field-row { display: flex; gap: 8px; }
+  .field-row > .field { flex: 1; }
+  .help-text { font-size: 10px; color: var(--text-mute); line-height: 1.5; padding: 2px 2px 0; }
+
+  .primary-btn {
+    display: block; width: 100%; padding: 10px; margin: 10px 0 2px;
+    background: var(--text); color: #fff; border: none; border-radius: 12px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .primary-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .secondary-btn {
+    padding: 7px 11px; background: var(--field); color: var(--text-dim);
+    border: none; border-radius: 9px; font-size: 12px; cursor: pointer;
+  }
+  .secondary-btn:hover { background: #e8e8ec; }
+
+  /* ---------- 자동완성 ---------- */
+  .suggest {
+    position: absolute; z-index: 20; top: 100%; left: 0; right: 0;
+    background: #fff; border-radius: 12px; margin-top: 4px;
+    max-height: 220px; overflow-y: auto;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.14);
+  }
+  .suggest button {
+    display: block; width: 100%; text-align: left;
+    padding: 9px 12px; background: transparent; border: none; color: var(--text);
+    font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--hair);
+  }
+  .suggest button:last-child { border-bottom: none; }
+  .suggest button:hover { background: var(--field); }
+  .suggest .meta { color: var(--text-mute); font-size: 10px; margin-top: 1px; }
+  .suggest .empty { padding: 12px; color: var(--text-mute); font-size: 11px; text-align: center; }
+  .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: middle; }
+
+  /* ---------- 카드 ---------- */
+  .bus-card {
+    --rc: var(--accent);
+    padding: 18px 6px 6px;
+  }
+
+  .card-time {
+    font-size: 46px; font-weight: 200; letter-spacing: -0.035em;
+    color: var(--text); line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .card-time .unit { font-size: 16px; font-weight: 500; color: var(--text-mute); margin: 0 9px 0 3px; }
+  .card-time.state { font-size: 27px; font-weight: 500; color: var(--text-mute); letter-spacing: -0.01em; }
+  .card-time.hot { color: var(--rc); font-weight: 300; }
+  .card-time.state.hot { color: var(--rc); }
+
+  /* ---------- 게이지 + 정거장 눈금 ---------- */
+  .gauge {
+    position: relative; margin: 44px 8px 0; height: 4px;
+    border-radius: 2px; background: #ececf0;
+  }
+  .gauge-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+    background: var(--rc);
+    transition: width 1s linear;
+  }
+  /* 정거장 점: 지나온 곳은 노선색, 남은 곳은 회색 링 */
+  .gauge-stop {
+    position: absolute; top: 50%;
+    width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+    background: #fff; border: 2px solid #d9d9de;
+    transition: border-color .4s, background .4s;
+  }
+  .gauge-stop.passed { border-color: var(--rc); background: var(--rc); }
+  /* 내 정류장 (도착점) */
+  .gauge-dest {
+    position: absolute; top: 50%; right: -6px;
+    width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--text);
+  }
+  .gauge-bus {
+    position: absolute; top: -38px; left: 0;
+    width: 48px; height: 36px; margin-left: -24px;
+    color: var(--rc);
+    transition: left 1s linear;
+    filter: drop-shadow(0 6px 12px color-mix(in srgb, var(--rc) 35%, transparent));
+  }
+  .gauge-bus svg, .gauge-bus img { width: 100%; height: 100%; display: block; }
+  .bus-card.arriving .gauge-bus { animation: bob 1.1s ease-in-out infinite; }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  .card-caption {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-top: 16px; font-size: 13px; color: var(--text-mute);
+  }
+  .card-caption .route { color: var(--rc); font-weight: 700; }
+  .card-caption .station { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+  .card-caption .stops { margin-left: auto; flex: none; }
+  .card-caption .stops b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .card-leave {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid var(--hair);
+    font-size: 12px; color: var(--text-mute);
+  }
+  .card-leave b { font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .card-leave.now { color: var(--go); }
+  .card-leave.now b { color: var(--go); }
+  .card-leave.missed { opacity: .6; }
+
+  /* ---------- 비어있음 ---------- */
+  .empty-state {
+    padding: 36px 20px; text-align: center; color: var(--text-mute);
+    font-size: 12px; line-height: 1.6;
+  }
+  .empty-state button {
+    margin-top: 12px; background: var(--text); color: #fff;
+    border: none; padding: 9px 16px; border-radius: 10px; font-size: 12px; cursor: pointer;
+  }
+
+  /* ---------- 상태 바 ---------- */
+  .status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 16px 10px;
+    font-size: 10px; color: var(--text-mute);
+  }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #d1d1d6; margin-right: 5px; vertical-align: 1px; }
+  .dot.on { background: #34c759; }
+  .dot.err { background: var(--danger); }
+
+  /* ---------- 현재 등록 ---------- */
+  .current-watch {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; background: var(--field); border-radius: 12px;
+  }
+  .current-watch .r { font-weight: 700; font-size: 13px; }
+  .current-watch .s { font-size: 11px; color: var(--text-mute); margin-top: 1px; }
+
+  /* ---------- 아이콘 갤러리 ---------- */
+  .icon-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+  .icon-cell {
+    aspect-ratio: 1; background: var(--field); border: 2px solid transparent; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--text-dim);
+  }
+  .icon-cell:hover { background: #e8e8ec; }
+  .icon-cell.active { border-color: var(--text); color: var(--text); }
+  .icon-cell svg, .icon-cell img { width: 58%; height: 58%; }
+
+  /* ---------- 요일 ---------- */
+  .days { display: flex; gap: 4px; }
+  .day-btn {
+    flex: 1; padding: 6px 0; text-align: center;
+    background: var(--field); border: none; border-radius: 8px;
+    font-size: 11px; color: var(--text-mute); cursor: pointer;
+  }
+  .day-btn.on { background: var(--text); color: #fff; }
+
+  /* ---------- 도움말(개발자) ---------- */
+  .help-block {
+    padding: 10px 12px; background: var(--field);
+    border-radius: 12px; margin: 6px 0; font-size: 11px; line-height: 1.6; color: var(--text-dim);
+  }
+  .help-block strong { color: var(--text); }
+  .help-block code, .help-block pre {
+    background: rgba(0,0,0,0.05); border-radius: 4px;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px;
+  }
+  .help-block code { padding: 1px 5px; }
+  .help-block pre { padding: 8px; overflow-x: auto; margin: 6px 0; }
+  .help-block a { color: var(--accent); }
+
+  /* ---------- 시나리오 미리보기 (개발자) ---------- */
+  .demo-bar {
+    display: flex; gap: 4px; padding: 8px 12px;
+    border-top: 1px solid var(--hair);
+    overflow-x: auto;
+  }
+  .demo-bar::-webkit-scrollbar { height: 0; }
+  .demo-bar button {
+    flex: none; padding: 5px 11px; border-radius: 999px;
+    background: var(--field); border: none;
+    color: var(--text-mute); font-size: 10px; cursor: pointer;
+  }
+  .demo-bar button.on { background: var(--text); color: #fff; }
+
+  /* ---------- 토스트 ---------- */
+  .toast {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: #fff;
+    padding: 8px 14px; border-radius: 999px; font-size: 11px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+  .toast.err { background: var(--danger); }
+</style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <div>
+        <span class="title">버스 도착</span>
+        <span id="active-badge" class="badge">활성</span>
+      </div>
+      <div class="actions">
+        <button id="btn-refresh" class="icon-btn" title="새로고침">↻</button>
+        <button id="btn-list" class="icon-btn active" title="위젯">▦</button>
+        <button id="btn-settings" class="icon-btn" title="설정">⚙</button>
+        <!-- DEV:START -->
+        <button id="btn-help" class="icon-btn" title="개발자 도움말">❔</button>
+        <!-- DEV:END -->
+      </div>
+    </div>
+
+    <div class="body">
+      <!-- 위젯 -->
+      <div id="page-list" class="page">
+        <div id="bus-list"></div>
+      </div>
+
+      <!-- 설정: 사용자는 시간대·버스·정류장·이동시간·아이콘만 -->
+      <div id="page-settings" class="page" style="display:none">
+        <h2>버스 · 정류장</h2>
+        <div id="current-watch"></div>
+        <div class="field-row">
+          <div class="field" style="flex:0 0 96px">
+            <label>지역</label>
+            <select id="new-city"></select>
+          </div>
+          <div class="field">
+            <label>노선번호 검색</label>
+            <input id="new-route" placeholder="예: 9802" autocomplete="off" />
+            <div id="sug-route" class="suggest" style="display:none"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>정류장 (선택한 노선에서 검색)</label>
+          <input id="new-station" placeholder="정류장명 일부" autocomplete="off" disabled />
+          <div id="sug-station" class="suggest" style="display:none"></div>
+        </div>
+        <button id="btn-set-watch" class="primary-btn" disabled>이 버스로 바꾸기</button>
+        <div class="help-text">버스와 정류장은 한 개만 등록됩니다. 새로 등록하면 기존 것을 대체해요.</div>
+
+        <h2>이동 시간</h2>
+        <div class="field">
+          <label>정류장까지 걸리는 시간 (분)</label>
+          <input id="input-walk" type="number" min="0" max="60" step="0.5" />
+          <div class="help-text">이 시간을 빼서 "지금 나가세요"를 알려드려요.</div>
+        </div>
+
+        <h2>시간대</h2>
+        <div class="field-row">
+          <div class="field"><label>시작</label><input id="input-start" type="time" step="600" /></div>
+          <div class="field"><label>종료</label><input id="input-end" type="time" step="600" /></div>
+        </div>
+        <div class="field">
+          <label>요일</label>
+          <div id="input-days" class="days"></div>
+        </div>
+
+        <h2>버스 아이콘</h2>
+        <div class="field">
+          <div id="icon-gallery" class="icon-gallery"></div>
+          <div class="field-row" style="margin-top:6px">
+            <button id="btn-upload-icon" class="secondary-btn" style="flex:1">이미지 업로드</button>
+            <button id="btn-reset-icon" class="secondary-btn" style="flex:1">기본으로</button>
+          </div>
+          <input id="input-icon-file" type="file" accept="image/*" style="display:none" />
+        </div>
+
+        <!-- DEV:START -->
+        <h2>개발자</h2>
+        <div class="field">
+          <label>서비스 키 (공공데이터포털 · 기능당 1,000회/일)</label>
+          <input id="input-key" />
+        </div>
+        <!-- DEV:END -->
+      </div>
+
+      <!-- DEV:START -->
+      <!-- 개발자 도움말 -->
+      <div id="page-help" class="page" style="display:none">
+        <h2>연결 구조</h2>
+        <div class="help-block">
+          항상 <strong>실 API</strong>. 프록시·중계기 불필요.
+          <ul style="margin:6px 0;padding-left:16px">
+            <li><strong>인천·경기(TAGO)</strong>: apis.data.go.kr — HTTPS+CORS 허용, 브라우저 직접 호출 (실측 확인)</li>
+            <li><strong>서울 도착</strong>: ws.bus.go.kr(HTTP) — direct 실패 시 공용 릴레이(allorigins) 폴백</li>
+            <li><strong>서울 검색·정류소</strong>: 정적 스냅샷(내장 인덱스 718노선 + data/seoul/*.json) — API 0회</li>
+          </ul>
+          <div class="help-text">
+            서울 도착정보는 키가 서울 인증서버에 등록 전파돼야 작동 (현재 대기, 매시간 자동 감시).
+            인천·경기 검색은 TAGO 버스노선정보/버스정류소정보 활용신청 승인 시 활성화.
+          </div>
+        </div>
+        <h2>트래픽 규칙</h2>
+        <div class="help-block">
+          한도: 도착정보 기능당 <strong>1,000회/일</strong> (키 공유 4명 가정).
+          <ul style="margin:6px 0;padding-left:16px">
+            <li>관심 시간대(기본 18:30–21:00, 10분 단위 설정) 안에서만 자동 갱신</li>
+            <li>적응형 주기: 도착·출발 3분 이내 <strong>60초</strong> · 12분 이내 <strong>120초</strong> · 그 외 <strong>240초</strong></li>
+            <li>일일 <strong>900회</strong> 도달 시 자동 갱신 중지(안전 상한) · 수동 새로고침 15초 스로틀</li>
+            <li>탭이 백그라운드면 호출 안 함 · 서울 노선 검색·정류소는 정적 데이터라 0회</li>
+          </ul>
+          2.5시간 창 기준 1인 최악 150회 → 4인 600회(60%). 하단 상태바에 오늘 호출 수 표시.
+        </div>
+        <h2>API (apis.data.go.kr/1613000)</h2>
+        <div class="help-block">
+          <div style="display:flex;justify-content:space-between"><span>노선검색</span><code>BusRouteInfoInqireService/getRouteNoList</code></div>
+          <div style="display:flex;justify-content:space-between"><span>경유 정류소</span><code>BusRouteInfoInqireService/getRouteAcctoThrghSttnList</code></div>
+          <div style="display:flex;justify-content:space-between"><span>도착정보</span><code>ArvlInfoInqireService/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList</code></div>
+          <div class="help-text" style="margin-top:4px">
+            서울 면허 노선은 <code>ws.bus.go.kr</code>(서울특별시_버스도착정보조회·노선정보조회)로 병행 조회 —
+            두 백엔드를 병렬 검색해 합친다. 승인 전파 전이면 해당 쪽 결과만 빠진다.
+          </div>
+        </div>
+        <h2>창 모드</h2>
+        <div class="help-block">
+          <pre>chrome.exe --app="file:///C:/경로/app.html"</pre>
+          항상 위(always-on-top)는 Electron/Tauri 단계에서.
+        </div>
+      </div>
+      <!-- DEV:END -->
+    </div>
+
+    <!-- DEV:START -->
+    <div class="demo-bar" id="demo-bar" title="시나리오 미리보기">
+      <button data-scn="live" class="on">실시간</button>
+      <button data-scn="far">여유</button>
+      <button data-scn="near">접근</button>
+      <button data-scn="arriving">곧 도착</button>
+      <button data-scn="leave">지금 나가기</button>
+      <button data-scn="missed">놓침</button>
+      <button data-scn="ended">운행 종료</button>
+      <button data-scn="play">▶ 자동 시연</button>
+    </div>
+    <!-- DEV:END -->
+
+    <div class="status-bar">
+      <div><span id="status-dot" class="dot"></span><span id="status-text">준비 중</span></div>
+      <div id="status-updated"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+
+/* ========================================================
+   저장 / 상태
+======================================================== */
+const STORAGE_KEY = "bus-widget:v2";
+
+const BUILTIN_SERVICE_KEY = "103d031fdbaba0a5eda7fe2dec3364d1abb0ae850ceb9ee99b4b0f435e9267de"; // 공공데이터포털 (기능당 1,000회/일)
+
+/* 트래픽 규칙 (일 1,000회 한도, 4명 공유 가정):
+   ① 관심 시간대(기본 18:30–21:00) 안에서만 자동 갱신
+   ② 적응형 주기 — 도착·출발 3분 이내 60초 / 12분 이내 120초 / 그 외 240초
+   ③ 일일 900회 도달 시 자동 갱신 중지(안전 상한), 수동 새로고침은 15초 스로틀
+   → 2.5시간 창 기준 1인 최악 150회, 4인 600회(한도의 60%) */
+const POLL = { near: 60, mid: 120, far: 240 };
+const DAILY_CAP = 900;
+const MANUAL_THROTTLE_MS = 15 * 1000;
+
+const DEFAULT_WATCH = {
+  id: "default-9802-nonhyeon",
+  src: "tago",             // 9802는 인천 면허 광역버스 (서울시 API에는 없음)
+  cityCode: "23",          // 인천
+  routeId: "ICB165000303", // 실측 확정 (2026-07-04, 인천 BIS 165000303 → TAGO ICB 접두)
+  routeName: "9802",
+  routeType: "광역버스",
+  color: "#e51937",
+  nodeId: "ICB121000014",  // 논현역 (ARS 32008, 인천 방향) — 실측 확정
+  stationName: "논현역",
+  ord: 161,
+  walkSeconds: 300,
+};
+
+const DEFAULTS = {
+  serviceKey: BUILTIN_SERVICE_KEY,
+  activeStart: "18:30",   // 관심 시간대 기본: 퇴근 (18:30–21:00)
+  activeEnd: "21:00",
+  activeDays: [1, 2, 3, 4, 5],
+  busIcon: "preset-1",       // preset-1..4, or a data URL
+  watch: structuredClone(DEFAULT_WATCH), // 버스는 오직 한 대
+};
+
+let CONFIG = load();
+const STATE = {
+  arrivals: [],          // [{remainSec, remainStops, ...}]
+  fetchedAt: 0,
+  lastError: null,
+  lastUpdatedAt: null,
+  refreshTimer: null,
+  tickTimer: null,
+  refreshing: false,
+  lastManualAt: 0,
+  demo: null,            // 시나리오 미리보기 (null = 실시간)
+  demoTimer: null,
+  demoArrivals: null,
+  demoFetchedAt: 0,
+};
+
+/* 외부에서 온 설정(localStorage·가져오기)은 신뢰하지 않고 정규화 */
+function normalizeConfig(cfg) {
+  const src = cfg && typeof cfg === "object" ? cfg : {};
+  const c = { ...structuredClone(DEFAULTS), ...src };
+  delete c.mode; delete c.proxyUrl; delete c.serviceKeyBackup; // 구버전 필드 정리
+  if (typeof c.serviceKey !== "string" || !c.serviceKey.trim()) c.serviceKey = BUILTIN_SERVICE_KEY;
+  if (typeof c.busIcon !== "string" || !c.busIcon) c.busIcon = "preset-1";
+  if (!/^\d{1,2}:\d{2}$/.test(String(c.activeStart))) c.activeStart = DEFAULTS.activeStart;
+  if (!/^\d{1,2}:\d{2}$/.test(String(c.activeEnd))) c.activeEnd = DEFAULTS.activeEnd;
+  // 예전 기본값(출근 07:30–09:30)을 그대로 쓰던 저장분은 새 기본(퇴근)으로 이행
+  if (c.activeStart === "07:30" && c.activeEnd === "09:30") {
+    c.activeStart = DEFAULTS.activeStart; c.activeEnd = DEFAULTS.activeEnd;
+  }
+  c.activeStart = snap10(c.activeStart); c.activeEnd = snap10(c.activeEnd);
+  if (!Array.isArray(c.activeDays)) c.activeDays = [...DEFAULTS.activeDays];
+  c.activeDays = c.activeDays.map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+
+  // 구버전(여러 대 배열) → 첫 번째만 승계 (src 기준으로 판단해야 DEFAULTS의 watch에 안 가려진다)
+  if (!src.watch && Array.isArray(src.watches) && src.watches.length) c.watch = src.watches[0];
+  delete c.watches;
+  c.watch = normalizeWatch(c.watch);
+  return c;
+}
+function normalizeWatch(w) {
+  if (!w || typeof w !== "object") return structuredClone(DEFAULT_WATCH);
+  // 관리되는 기본 항목은 항상 최신 확정값으로 교체, 구버전 저장분(src 없음)도 리셋
+  if (w.id === "default-9802-nonhyeon" || !w.src || w.stId !== undefined || w.busRouteId !== undefined) {
+    return structuredClone(DEFAULT_WATCH);
+  }
+  return {
+    ...w,
+    id: (typeof w.id === "string" && /^[\w-]+$/.test(w.id)) ? w.id : uid(),
+    color: (typeof w.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(w.color)) ? w.color : routeColor(w.routeType),
+    walkSeconds: Math.max(0, Number(w.walkSeconds) || 0),
+  };
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return normalizeConfig(raw ? JSON.parse(raw) : {});
+  } catch { return normalizeConfig({}); }
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG)); } catch { /* 저장 불가 환경 */ }
+}
+
+/* ========================================================
+   유틸
+======================================================== */
+const $ = id => document.getElementById(id);
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, ch => (
+  {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const uid = () => (crypto && crypto.randomUUID) ? crypto.randomUUID() : "id-" + Math.random().toString(36).slice(2, 10);
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+/* "HH:MM" → 10분 단위로 반올림 (관심 시간대는 10분 단위 선택) */
+function snap10(t) {
+  const m = String(t || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return t;
+  let h = Number(m[1]), min = Math.round(Number(m[2]) / 10) * 10;
+  if (min === 60) { min = 0; h = (h + 1) % 24; }
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+function fmtTime(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  if (m === 0) return `${s}초`;
+  if (s === 0) return `${m}분`;
+  return `${m}분 ${String(s).padStart(2, "0")}초`;
+}
+
+/* ========================================================
+   실 API 이중 백엔드 (프록시 없음)
+   [TAGO]  apis.data.go.kr (인천·경기) — HTTPS+CORS, 브라우저 직접. 도착정보 인증 실측 확인
+   [SEOUL] 도착만 ws.bus.go.kr(HTTP, direct→relay 폴백) — 키 등록 전파 대기. 검색·정류소는 정적 스냅샷
+======================================================== */
+const TAGO_BASE = "https://apis.data.go.kr/1613000";
+const SEOUL_BASE = "http://ws.bus.go.kr/api/rest";
+const TAGO_API = {
+  routeList:  `${TAGO_BASE}/BusRouteInfoInqireService/getRouteNoList`,
+  routeStops: `${TAGO_BASE}/BusRouteInfoInqireService/getRouteAcctoThrghSttnList`,
+  arrival:    `${TAGO_BASE}/ArvlInfoInqireService/getSttnAcctoSpcifyRouteBusArvlPrearngeInfoList`,
+};
+const SEOUL_API = {
+  arrival: `${SEOUL_BASE}/arrive/getArrInfoByRoute`, // 도착만 실시간 API (키 승인 전파 대기)
+};
+/* 서울 노선 인덱스 — 서울 열린데이터광장 busRteInfo(공식 마스터, 41,658행)에서 생성한 정적 스냅샷.
+   검색·정류소 목록은 API 승인 없이 이 데이터로 동작. 정류소 상세는 data/seoul/route-<ID>.json */
+const SEOUL_ROUTES = [{"id":"100100124","no":"0017","s":"신용산지하차도","e":"용산역3번출구.용산차고지"},{"id":"100100001","no":"01A","s":"남산예장버스환승주차장","e":"남산예장버스환승주차장"},{"id":"106000004","no":"01B","s":"남산예장버스환승주차장","e":"남산예장버스환승주차장"},{"id":"104000014","no":"040","s":"신용산지하차도","e":"용산역3번출구.용산차고지"},{"id":"104000012","no":"0411","s":"서울드래곤시티","e":"용산역3번출구.용산차고지"},{"id":"100100549","no":"100","s":"한성여객종점","e":"한성여객종점"},{"id":"100100006","no":"101","s":"우이동도선사입구.북한산우이역","e":"우이동성원아파트"},{"id":"100100129","no":"1014","s":"성북생태체험관","e":"성북생태체험관"},{"id":"100100130","no":"1017","s":"삼화상운차고지","e":"월계119안전센터"},{"id":"100100007","no":"102","s":"온곡중학교.노원중앙도서관","e":"상계초등학교"},{"id":"100100131","no":"1020","s":"정릉북한산국립공원입구","e":"정릉북한산국립공원입구"},{"id":"100100008","no":"103","s":"삼화상운","e":"월계주공1단지아파트앞"},{"id":"100100009","no":"104","s":"강북청소년센터","e":"강북청소년센터"},{"id":"100100010","no":"105","s":"7단지영업소","e":"7단지영업소"},{"id":"100100012","no":"107","s":"민락엘레트19단지후문","e":"민락엘레트19단지후문"},{"id":"100100014","no":"109","s":"영신여객차고지(우이동종점)","e":"영신여객차고지(우이동종점)"},{"id":"100100016","no":"110A고려대","s":"정릉북한산국립공원입구","e":"정릉북한산국립공원입구"},{"id":"100100015","no":"110B국민대","s":"정릉북한산국립공원입구","e":"정릉북한산국립공원입구"},{"id":"104000009","no":"111","s":"민락엘레트19단지후문","e":"민락엘레트19단지후문"},{"id":"100100132","no":"1111","s":"북부수도사업소","e":"북부고용노동지청.한성운수종점"},{"id":"107000007","no":"1112","s":"정릉4동주민센터.경국사","e":"정릉4동주민센터.경국사"},{"id":"100100133","no":"1113","s":"정릉산장아파트","e":"대진여객차고지"},{"id":"100100134","no":"1114","s":"성북생태체험관","e":"성북생태체험관"},{"id":"100100566","no":"1115","s":"혜화여고.수유중학교입구","e":"혜화여고.수유중학교입구"},{"id":"107000001","no":"1116","s":"국민대앞","e":"국민대앞"},{"id":"100100137","no":"1119","s":"강북청소년센터","e":"강북청소년센터"},{"id":"100100138","no":"1120","s":"한성여객종점","e":"홈플러스중계점"},{"id":"100100425","no":"1122","s":"상진운수종점","e":"상진운수종점"},{"id":"100100139","no":"1124","s":"북부수도사업소","e":"북부고용노동지청.한성운수종점"},{"id":"100100142","no":"1126","s":"강북청소년센터","e":"강북청소년센터"},{"id":"100100143","no":"1127","s":"도봉산입구","e":"도봉산입구"},{"id":"100100144","no":"1128","s":"도봉산입구","e":"도봉산입구"},{"id":"100100145","no":"1129","s":"상계현대2차아파트","e":"상경초등학교.상계현대3차아파트"},{"id":"100100146","no":"1130","s":"청백아파트1단지","e":"대우아파트"},{"id":"100100147","no":"1131","s":"중계본동종점","e":"중계본동종점"},{"id":"100100148","no":"1132","s":"월계동진아교통","e":"월계동진아교통"},{"id":"100100149","no":"1133","s":"염광고등학교","e":"월계공단"},{"id":"100100150","no":"1135","s":"월계동진아교통","e":"월계동진아교통"},{"id":"100100151","no":"1136","s":"월계동진아교통","e":"월계동진아교통"},{"id":"100100152","no":"1137","s":"온곡중학교.노원중앙도서관","e":"상계초등학교"},{"id":"100100153","no":"1138","s":"흥안운수상계4동종점","e":"흥안운수상계4동종점"},{"id":"100100154","no":"1139","s":"흥안운수상계4동종점","e":"흥안운수상계4동종점"},{"id":"100100155","no":"1140","s":"삼화상운차고지","e":"롯데캐슬루나아파트"},{"id":"100100156","no":"1141","s":"중계본동종점","e":"중계본동종점"},{"id":"100100157","no":"1142","s":"중계본동종점","e":"중계본동종점"},{"id":"100100158","no":"1143","s":"중계본동종점","e":"불암산스포츠타운"},{"id":"100100159","no":"1144","s":"한성여객종점","e":"하계역3번출구.을지병원"},{"id":"100100164","no":"1154","s":"한성여객종점","e":"홈플러스중계점"},{"id":"100100170","no":"1162","s":"구민회관입구","e":"성북참노인전문병원"},{"id":"100100171","no":"1164","s":"서경대본관","e":"서경대본관"},{"id":"100100172","no":"1165","s":"화계사입구.종점","e":"한신대학교"},{"id":"108000002","no":"1167","s":"영신여객차고지(우이동종점)","e":"영신여객차고지(우이동종점)"},{"id":"100100017","no":"120","s":"영신여객차고지(우이동종점)","e":"영신여객차고지(우이동종점)"},{"id":"100100583","no":"121","s":"화계사입구.종점","e":"화계사입구.한신대학교대학원"},{"id":"100100175","no":"1213","s":"용마문화복지센터.서일대후문","e":"용마문화복지센터.서일대후문"},{"id":"100100177","no":"1218","s":"북부고용노동지청","e":"북부고용노동지청.한성운수종점"},{"id":"100100178","no":"1221","s":"중계본동종점","e":"노원우체국"},{"id":"100100179","no":"1222","s":"월계동진아교통","e":"월계동진아교통"},{"id":"100100181","no":"1224","s":"흥안운수상계4동종점","e":"흥안운수상계4동종점"},{"id":"100100183","no":"1226","s":"월곡중학교","e":"상월곡역.한국과학기술연구원"},{"id":"100100184","no":"1227","s":"한성여객종점","e":"청구빌라.연촌초등학교"},{"id":"100100018","no":"130","s":"우이동차고지기점","e":"우이동차고지종점"},{"id":"100100019","no":"140","s":"도봉산역광역환승센터","e":"도봉산역광역환승센터"},{"id":"100100020","no":"141","s":"도봉산입구","e":"도봉산입구"},{"id":"100100021","no":"142","s":"도봉산입구","e":"도봉산입구"},{"id":"100100022","no":"143","s":"정릉산장아파트","e":"대진여객차고지"},{"id":"100100023","no":"144","s":"우이동차고지기점","e":"우이동차고지종점"},{"id":"100100024","no":"145","s":"북부수도사업소","e":"북부고용노동지청.한성운수종점"},{"id":"100100025","no":"146","s":"7단지영업소","e":"7단지영업소"},{"id":"100100026","no":"147","s":"월계동진아교통","e":"월계동진아교통"},{"id":"100100027","no":"148","s":"북부고용노동지청","e":"북부고용노동지청.한성운수종점"},{"id":"100100029","no":"150","s":"도봉산역광역환승센터","e":"도봉산역광역환승센터"},{"id":"100100030","no":"151","s":"우이동도선사입구.북한산우이역","e":"우이동성원아파트"},{"id":"100100031","no":"152","s":"혜화여고.수유중학교입구","e":"혜화여고.수유중학교입구"},{"id":"100100033","no":"160","s":"도봉산역광역환승센터","e":"도봉산역광역환승센터"},{"id":"100100034","no":"162","s":"정릉산장아파트","e":"대진여객차고지"},{"id":"100100032","no":"163","s":"우이동도선사입구.북한산우이역","e":"우이동성원아파트"},{"id":"100100036","no":"171","s":"북악중학교","e":"국민대앞"},{"id":"100100185","no":"1711","s":"청덕초등학교입구","e":"청덕초등학교입구"},{"id":"100100037","no":"172","s":"한성여객종점","e":"한성여객종점"},{"id":"110000002","no":"173","s":"삼화상운차고지","e":"월계119안전센터"},{"id":"100100038","no":"201","s":"구리수택차고지","e":"구리수택차고지"},{"id":"100100186","no":"2012","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100188","no":"2013","s":"용마문화복지센터.서일대후문","e":"용마문화복지센터.서일대후문"},{"id":"100100189","no":"2014","s":"성수동차고지","e":"성수동진주타운"},{"id":"100100190","no":"2015","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100522","no":"2016","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100039","no":"202","s":"202번종점","e":"202번종점"},{"id":"100100191","no":"2112","s":"중곡초등학교","e":"중곡초등학교"},{"id":"100100192","no":"2113","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100193","no":"2114","s":"중랑공영차고지삼거리","e":"중랑공영차고지.종점"},{"id":"100100598","no":"2115","s":"중랑공영차고지삼거리","e":"중랑공영차고지.종점"},{"id":"110000009","no":"2155","s":"202번종점","e":"202번종점"},{"id":"100100194","no":"2211","s":"중곡초등학교","e":"중곡초등학교"},{"id":"100100166","no":"2212","s":"202번종점","e":"202번종점"},{"id":"100100198","no":"2221","s":"신자초등학교앞","e":"신자초등학교앞"},{"id":"100100199","no":"2222","s":"신자초등학교앞","e":"신자초등학교앞"},{"id":"100100201","no":"2224","s":"성수동차고지","e":"뚝도시장구길"},{"id":"100100202","no":"2227","s":"중랑공영차고지삼거리","e":"중랑공영차고지.종점"},{"id":"100100203","no":"2230","s":"방약국앞","e":"방약국앞"},{"id":"100100204","no":"2233","s":"중곡초등학교","e":"중곡초등학교"},{"id":"111000019","no":"2236","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100599","no":"2311","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100611","no":"2312","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100407","no":"240","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100595","no":"241","s":"중랑공영차고지삼거리","e":"중랑공영차고지.종점"},{"id":"100100209","no":"2412","s":"성수동차고지","e":"뚝도시장구길"},{"id":"100100210","no":"2413","s":"성수동차고지","e":"뚝도시장구길"},{"id":"100100211","no":"2415","s":"신자초등학교앞","e":"신자초등학교앞"},{"id":"104000010","no":"2416","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"104000006","no":"242","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100042","no":"260","s":"중랑공영차고지삼거리","e":"중랑공영차고지.종점"},{"id":"100100043","no":"261","s":"석관고등학교후문","e":"상진운수종점"},{"id":"100100044","no":"262","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100046","no":"270","s":"월드컵파크7단지","e":"월드컵파크7단지"},{"id":"100100047","no":"271","s":"용마문화복지센터.서일대후문","e":"용마문화복지센터.서일대후문"},{"id":"100100048","no":"272","s":"방약국앞","e":"방약국앞"},{"id":"100100049","no":"273","s":"중랑공영차고지.신내역","e":"중랑공영차고지.신내역"},{"id":"100100051","no":"301","s":"서울버스종점","e":"서울버스종점"},{"id":"100100438","no":"3011","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100052","no":"302","s":"상대원차고지","e":"상대원차고지"},{"id":"100100053","no":"303","s":"상대원차고지","e":"상대원차고지"},{"id":"100100564","no":"320","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"100100212","no":"3212","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100213","no":"3214","s":"남한산성입구","e":"남한산성입구"},{"id":"100100215","no":"3216","s":"송파레미니스후문","e":"송파레미니스후문"},{"id":"100100216","no":"3217","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"100100218","no":"3220","s":"송파레미니스후문","e":"송파레미니스후문"},{"id":"100100219","no":"3313","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"100100220","no":"3314","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100221","no":"3315","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100222","no":"3316","s":"남한산성입구","e":"남한산성입구"},{"id":"100100478","no":"3317","s":"남한산성입구","e":"남한산성입구"},{"id":"100100498","no":"3318","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100501","no":"3319","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100578","no":"3321","s":"강동공영차고지","e":"강동공영차고지"},{"id":"100100613","no":"3322","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"124000039","no":"3323","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"104000013","no":"3324","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100496","no":"333","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"100100055","no":"340","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100056","no":"341","s":"강동공영차고지","e":"강동공영차고지"},{"id":"100100223","no":"3411","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100224","no":"3412","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100225","no":"3413","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100226","no":"3414","s":"송파레미니스후문","e":"송파레미니스후문"},{"id":"100100228","no":"3416","s":"남한산성입구","e":"남한산성입구"},{"id":"100100229","no":"3417","s":"장지공영차고지","e":"장지공영차고지"},{"id":"124000038","no":"342","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100579","no":"3420","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"100100232","no":"3422","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100612","no":"3426","s":"서울버스종점","e":"서울버스종점"},{"id":"107000002","no":"343","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"124000036","no":"345","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"100100553","no":"350","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"100100057","no":"360","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"100100454","no":"361","s":"복정역환승센터4번승강장","e":"복정역환승주차장"},{"id":"100100061","no":"370","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"100100596","no":"400","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"100100062","no":"401","s":"서울버스종점","e":"서울버스종점"},{"id":"100100063","no":"402","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100597","no":"405","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"100100064","no":"406","s":"구룡마을","e":"구룡산입구"},{"id":"100100068","no":"420","s":"개포자이프레지던스","e":"개포중학교"},{"id":"100100409","no":"421","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"100100604","no":"4211","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"100100234","no":"4212","s":"남태령역","e":"남태령역"},{"id":"107000008","no":"422","s":"구미동차고지앞","e":"구미동차고지"},{"id":"100100500","no":"4312","s":"구룡마을","e":"구룡산입구"},{"id":"100100237","no":"4318","s":"남태령역","e":"남태령역"},{"id":"100100427","no":"4319","s":"남태령역","e":"남태령역"},{"id":"100100459","no":"440","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"100100070","no":"441","s":"월암종점","e":"월암종점"},{"id":"100100609","no":"4425","s":"상대원차고지","e":"상대원차고지"},{"id":"100100246","no":"4432","s":"래미안블레스티지아파트","e":"개포중학교"},{"id":"100100247","no":"4433","s":"대치역7번출구.선경아파트","e":"대치역6번출구.강남구민회관"},{"id":"122000001","no":"4435","s":"구룡마을","e":"구룡산입구"},{"id":"113000002","no":"452","s":"복정역환승센터4번승강장","e":"복정역환승센터2번승강장"},{"id":"100100071","no":"461","s":"장지공영차고지","e":"장지공영차고지"},{"id":"100100605","no":"463","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"100100073","no":"470","s":"서부면허시험장","e":"월드컵파크7단지"},{"id":"100100075","no":"472","s":"래미안블레스티지아파트","e":"개포중학교"},{"id":"100100076","no":"500","s":"석수역(중)","e":"기아대교"},{"id":"100100077","no":"501","s":"대학동고시촌입구","e":"서울대학교"},{"id":"100100248","no":"5012","s":"가산동기점","e":"가산동종점"},{"id":"100100410","no":"502","s":"월암종점","e":"월암종점"},{"id":"100100078","no":"503","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100079","no":"504","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100080","no":"505","s":"노온사동차고지","e":"노온사동차고지"},{"id":"100100081","no":"506","s":"신림중.삼성고.관악아트홀·도서관","e":"서울대학교"},{"id":"100100082","no":"507","s":"석수역","e":"기아대교"},{"id":"100100083","no":"540","s":"군포공영차고지","e":"군포공영차고지"},{"id":"100100574","no":"541","s":"군포공영차고지","e":"군포공영차고지"},{"id":"100100249","no":"5413","s":"범일운수종점","e":"범일운수종점"},{"id":"100100250","no":"5511","s":"대학동고시촌입구","e":"서울대정문"},{"id":"100100251","no":"5513","s":"제2공학관","e":"제2공학관"},{"id":"100100252","no":"5515","s":"금호타운아파트","e":"대학동샘말공원"},{"id":"100100253","no":"5516","s":"대학동고시촌입구","e":"경영대.행정대학원"},{"id":"100100254","no":"5517","s":"신림중.삼성고.관악아트홀·도서관","e":"서울대학교"},{"id":"100100255","no":"5519","s":"우방아파트","e":"신대방역"},{"id":"100100257","no":"5522A난곡","s":"보성운수기종점","e":"난곡종점"},{"id":"100100258","no":"5522B호암","s":"보성운수기종점","e":"신림복지관앞"},{"id":"100100259","no":"5523","s":"보성운수기종점","e":"신림복지관앞"},{"id":"100100260","no":"5524","s":"난곡종점","e":"난곡공영차고지"},{"id":"100100261","no":"5525","s":"범일운수종점","e":"범일운수종점"},{"id":"100100263","no":"5528","s":"가산동기점","e":"가산동종점"},{"id":"100100264","no":"5530","s":"군포공영차고지","e":"군포공영차고지"},{"id":"100100265","no":"5531","s":"군포공영차고지","e":"군포공영차고지"},{"id":"100100267","no":"5535","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100268","no":"5536","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100269","no":"5537","s":"범일운수종점","e":"범일운수종점"},{"id":"100100295","no":"5611","s":"가산디지털단지역4번출구","e":"가산디지털단지역2번출구"},{"id":"100100272","no":"5615","s":"보성운수차고지맞은편","e":"신림복지관앞"},{"id":"100100273","no":"5616","s":"가산디지털단지역2번출구","e":"가산디지털단지역4번출구"},{"id":"100100274","no":"5617","s":"범일운수종점","e":"범일운수종점"},{"id":"100100275","no":"5618","s":"보성운수기종점","e":"대림역"},{"id":"100100276","no":"5619","s":"범일운수종점","e":"범일운수종점"},{"id":"100100277","no":"5620","s":"범일운수종점","e":"범일운수종점"},{"id":"100100278","no":"5621","s":"삼익아파트앞","e":"삼익아파트"},{"id":"100100279","no":"5623","s":"군포공영차고지","e":"군포공영차고지"},{"id":"100100281","no":"5625","s":"비산체육공원","e":"안양비산동종점"},{"id":"100100282","no":"5626","s":"비산체육공원","e":"안양비산동종점"},{"id":"100100283","no":"5627","s":"노온사동차고지","e":"노온사동차고지"},{"id":"100100284","no":"5630","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100285","no":"5633","s":"노온사동차고지","e":"노온사동차고지"},{"id":"100100266","no":"5634","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100084","no":"571","s":"가산동기점","e":"가산동종점"},{"id":"100100286","no":"5712","s":"가산디지털단지역2번출구","e":"가산디지털단지역4번출구"},{"id":"100100287","no":"5713","s":"비산체육공원","e":"안양비산동종점"},{"id":"100100288","no":"5714","s":"광명공영차고지기점","e":"광명공영차고지종점"},{"id":"100100085","no":"600","s":"온수동종점","e":"온수동종점"},{"id":"100100412","no":"6001","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100413","no":"6002","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100414","no":"6003","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100415","no":"6004","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100416","no":"6005","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100506","no":"6006","s":"잠실새내역","e":"잠실새내역"},{"id":"124000014","no":"6007","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100417","no":"6008","s":"해군호텔","e":"해군호텔"},{"id":"100100507","no":"6009","s":"가락1동주민센터","e":"삼성서울병원정문"},{"id":"100100086","no":"601","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100584","no":"6010","s":"왕십리역","e":"왕십리역"},{"id":"100100418","no":"6011","s":"월계동대우아파트","e":"월계동대우아파트"},{"id":"100100419","no":"6012","s":"구파발역.롯데몰","e":"구파발역.롯데몰"},{"id":"100100420","no":"6013","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100421","no":"6014","s":"광명종합터미널","e":"광명종합터미널"},{"id":"100100422","no":"6015","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100423","no":"6016","s":"서울교육대앞","e":"서울교육대앞"},{"id":"100100533","no":"6017","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100538","no":"6018","s":"신도림역","e":"신도림역"},{"id":"115000006","no":"6019","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100087","no":"602","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100509","no":"6020","s":"역삼역","e":"역삼역"},{"id":"100100088","no":"603","s":"신월동우성상가","e":"신월동우성상가"},{"id":"100100089","no":"604","s":"신월동기점","e":"신월동기점"},{"id":"100100090","no":"605","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100091","no":"606","s":"자동차매매단지","e":"자동차매매단지"},{"id":"100100513","no":"6100","s":"망우역","e":"망우역"},{"id":"122000012","no":"6100-1","s":"의릉입구","e":"의릉입구"},{"id":"100100373","no":"6101","s":"창동역1번출구(노원방면)","e":"창동농협물류센터"},{"id":"122000002","no":"6102","s":"서울북부지방법원등기국","e":"쌍문역"},{"id":"124000013","no":"6103","s":"코엑스도심공항","e":"도심공항터미널(가상)"},{"id":"122000011","no":"6104","s":"개포4단지5단지","e":"개포4단지5단지"},{"id":"124000006","no":"6200","s":"황산","e":"황산"},{"id":"100100289","no":"6211","s":"신월동우성상가","e":"신월동우성상가"},{"id":"100100508","no":"6300","s":"강일리버10단지.미사강변센텀팰리스","e":"강일역.고덕리엔파크3단지.2단지"},{"id":"100100093","no":"640","s":"신월동우성상가","e":"신월동우성상가"},{"id":"100100094","no":"641","s":"문래동시점","e":"문래동종점"},{"id":"100100290","no":"6411","s":"정랑고개.양천벤처타운","e":"정랑고개.양천벤처타운"},{"id":"100100096","no":"643","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100097","no":"650","s":"외발산동기점","e":"외발산신광명마을"},{"id":"123000014","no":"6500","s":"강남우체국","e":"개포6단지앞"},{"id":"100100098","no":"651","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"100100291","no":"6511","s":"정랑고개.양천벤처타운","e":"정랑고개.양천벤처타운"},{"id":"100100292","no":"6512","s":"구로두산아파트","e":"구로종합사회복지관"},{"id":"100100294","no":"6514","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100521","no":"6515","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100576","no":"6516","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100099","no":"652","s":"신월동기점","e":"신월동기점"},{"id":"100100497","no":"653","s":"영인운수.차고지","e":"영인운수.차고지"},{"id":"115000007","no":"654","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"116000004","no":"660","s":"온수동종점","e":"온수동종점"},{"id":"123000002","no":"6600","s":"마천역.송파파크센트럴","e":"마천역.송파파크센트럴"},{"id":"100100102","no":"661","s":"자동차매매단지","e":"자동차매매단지"},{"id":"115000014","no":"6611","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100453","no":"6613","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100297","no":"6614","s":"양천공영차고지","e":"양천공영차고지"},{"id":"116000002","no":"6615","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100298","no":"6616","s":"세풍운수종점","e":"세풍운수종점"},{"id":"100100299","no":"6617","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100550","no":"662","s":"외발산동기점","e":"외발산신광명마을"},{"id":"100100300","no":"6620","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100301","no":"6623","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100302","no":"6624","s":"서울과학수사연구소.고강동종점","e":"서울과학수사연구소.고강동종점"},{"id":"100100303","no":"6625","s":"문래동시점","e":"KT&G영등포지사.문래동종점"},{"id":"100100304","no":"6627","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100305","no":"6628","s":"외발산동기점","e":"외발산신광명마을"},{"id":"100100306","no":"6629","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"100100307","no":"6630","s":"영인운수.차고지","e":"영인운수.차고지"},{"id":"100100308","no":"6631","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100309","no":"6632","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"115000012","no":"6633","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100312","no":"6637","s":"노온사동차고지","e":"노온사동차고지"},{"id":"100100313","no":"6638","s":"세풍운수종점","e":"세풍운수종점"},{"id":"100100601","no":"6640A","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100602","no":"6640B","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100316","no":"6642","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100318","no":"6645","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100320","no":"6647","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"115000005","no":"6648","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"100100329","no":"6657","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100567","no":"6701","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100573","no":"6702","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100572","no":"6703","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100570","no":"6705A","s":"인천공항T2-B1층","e":"인천공항T2-3층"},{"id":"100100330","no":"6712","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"100100293","no":"6713","s":"세풍운수종점","e":"세풍운수종점"},{"id":"100100331","no":"6714","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100332","no":"6715","s":"신월동우성상가","e":"신월동우성상가"},{"id":"100100451","no":"6716","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100495","no":"672","s":"방화7단지.국립국어원","e":"방화3동주민센터.국립국어원"},{"id":"100100551","no":"673","s":"자동차매매단지","e":"자동차매매단지"},{"id":"111000008","no":"674","s":"신월동기점","e":"신월동기점"},{"id":"100100440","no":"700","s":"대화동종점","e":"대화동종점"},{"id":"100100103","no":"701","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100450","no":"7011","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100449","no":"7013A","s":"은평공영차고지","e":"은평공영차고지(가상)"},{"id":"100100448","no":"7013B","s":"은평공영차고지","e":"은평공영차고지(가상)"},{"id":"100100447","no":"7016","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100337","no":"7017","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100338","no":"7018","s":"서부운수기점","e":"북가좌119안전센터"},{"id":"100100339","no":"7019","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100340","no":"7021","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100341","no":"7022","s":"선진운수종점","e":"선진운수종점"},{"id":"100100342","no":"7024","s":"봉원사","e":"봉원사길"},{"id":"100100446","no":"7025","s":"은평공영차고지","e":"은평권역공영차고지"},{"id":"100100104","no":"702A","s":"선진운수원당차고지.원신4통입구","e":"선진운수원당차고지.원신4통입구"},{"id":"100100105","no":"702B","s":"선진운수원당차고지.원신4통입구","e":"선진운수원당차고지.원신4통입구"},{"id":"116000006","no":"703","s":"경남아너스빌.탄현역","e":"경남아너스빌.탄현역"},{"id":"100100107","no":"704","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100587","no":"705","s":"진관공영차고지","e":"진관공영차고지"},{"id":"111000027","no":"706","s":"동산동능모퉁이.한국지역난방공사","e":"은덕교.금암문화공원"},{"id":"111000022","no":"707","s":"가좌동종점","e":"두신마을"},{"id":"123000011","no":"708","s":"진관공영차고지","e":"진관공영차고지"},{"id":"111000028","no":"709","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100110","no":"710","s":"월드컵파크7단지","e":"월드컵파크7단지"},{"id":"100100111","no":"720","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100112","no":"721","s":"서부운수기점","e":"북가좌오거리"},{"id":"100100344","no":"7211","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100499","no":"7212","s":"은평공영차고지","e":"은평권역공영차고지"},{"id":"100100537","no":"740","s":"덕은동종점","e":"덕은동종점"},{"id":"123000010","no":"741","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100116","no":"742","s":"선진운수종점","e":"선진운수종점"},{"id":"100100114","no":"750A","s":"덕은동종점","e":"덕은동종점"},{"id":"100100565","no":"750B","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100117","no":"752","s":"선진운수종점","e":"선진운수종점"},{"id":"100100118","no":"753","s":"구산동사거리","e":"선진운수종점"},{"id":"100100511","no":"760","s":"대화동종점","e":"대화동종점"},{"id":"111000014","no":"761","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100345","no":"7611","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100346","no":"7612","s":"연희파크푸르지오앞","e":"홍연2교.현대교통종점"},{"id":"100100347","no":"7613","s":"선진운수종점","e":"구산동사거리"},{"id":"100100437","no":"771","s":"대화동종점","e":"대화동종점"},{"id":"100100348","no":"7711","s":"덕은동종점","e":"덕은동종점"},{"id":"100100349","no":"7713","s":"연희파크푸르지오앞","e":"홍연2교.현대교통종점"},{"id":"100100462","no":"7715","s":"은평공영차고지","e":"은평권역공영차고지"},{"id":"112000005","no":"7716","s":"서부운수기점","e":"북가좌오거리"},{"id":"124000008","no":"7719","s":"서부운수기점","e":"북가좌2동주민센터"},{"id":"100100352","no":"7720","s":"선진운수종점","e":"선진운수종점"},{"id":"100100353","no":"7722","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100354","no":"7723","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100357","no":"7726","s":"덕은동종점","e":"덕은동종점"},{"id":"100100358","no":"7727","s":"설문동","e":"설문동"},{"id":"100100359","no":"7728","s":"대화동종점","e":"대화동종점"},{"id":"100100360","no":"7730","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"111000010","no":"7734","s":"진관공영차고지","e":"진관공영차고지"},{"id":"100100363","no":"7737","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100364","no":"7738","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"100100552","no":"7739","s":"은평공영차고지","e":"덕은교.은평차고지앞"},{"id":"107000003","no":"8002","s":"하림각","e":"상명대입구.세검정교회"},{"id":"107000004","no":"8003","s":"평창파출소","e":"평창동주민센터"},{"id":"110000005","no":"8101","s":"도봉보건소","e":"도봉보건소.북한산아이파크아파트"},{"id":"107000009","no":"8111","s":"북악중학교","e":"국민대앞"},{"id":"110000006","no":"8112","s":"온곡중학교.노원중앙도서관","e":"상계초등학교"},{"id":"110000004","no":"8146","s":"7단지영업소","e":"7단지영업소"},{"id":"106000001","no":"8221","s":"장안2동주민센터","e":"답십리역.동부시장"},{"id":"124000010","no":"8331","s":"마천사거리","e":"잠실역8번출구"},{"id":"124000040","no":"8332","s":"힐스테이트리슈빌강일501동","e":"강동공영차고지"},{"id":"106000007","no":"8333","s":"힐스테이트리슈빌강일501동","e":"미사강변루나리움.강일리버5단지"},{"id":"103000001","no":"8441","s":"은곡마을.LH이편한세상","e":"수서역5번출구"},{"id":"121000002","no":"8442출근","s":"식유촌우면성당.서초호반써밋","e":"서초호반써밋"},{"id":"106000006","no":"8442퇴근","s":"양재역.서초문화예술회관","e":"양재역.서초문화예술회관"},{"id":"100100383","no":"8541","s":"벽산아파트1단지.호압사입구","e":"행운동주민센터"},{"id":"108000001","no":"8551","s":"봉천역","e":"봉천역.관악초등학교"},{"id":"116000001","no":"8552","s":"신림복지관앞","e":"신림사거리.신림역"},{"id":"116000005","no":"8561","s":"신림동별빛거리입구","e":"당곡역.당곡사거리.롯데백화점"},{"id":"114000002","no":"8641","s":"거리공원","e":"신도림역"},{"id":"120000003","no":"8661","s":"구로SKV1.제일풍경채포레스트","e":"구로SKV1지식산업센터"},{"id":"114000003","no":"8671","s":"문래동시점","e":"KT&G영등포지사.문래동종점"},{"id":"113000003","no":"8762출근","s":"디지털미디어시티역2번출구","e":"공항철도디지털미디어시티역"},{"id":"112000006","no":"8762퇴근","s":"디지털미디어시티역2번출구","e":"공항철도디지털미디어시티역"},{"id":"111000009","no":"8771","s":"구산중학교.구산교회","e":"녹번역"},{"id":"100100525","no":"8772","s":"진관공영차고지","e":"진관공영차고지"},{"id":"112000003","no":"8773출근","s":"선진운수종점","e":"선진운수종점"},{"id":"112000007","no":"8773퇴근","s":"선진운수종점","e":"선진운수종점"},{"id":"100100387","no":"8774","s":"선진운수종점","e":"구산사거리"},{"id":"113000007","no":"8775출근","s":"월드컵파크7단지","e":"월드컵파크7단지"},{"id":"111000029","no":"8775퇴근","s":"월드컵파크7단지","e":"월드컵파크7단지"},{"id":"112000001","no":"8777","s":"난지한강공원","e":"노을공원입구(난지미술창작스튜디오)"},{"id":"100100389","no":"9401","s":"구미동차고지앞","e":"구미동차고지"},{"id":"113000004","no":"9401-1","s":"푸른마을","e":"푸른마을"},{"id":"100100391","no":"9404","s":"농수산물센터사거리.LG트윈하우스","e":"농수산물센터"},{"id":"100100392","no":"9408","s":"구미동차고지앞","e":"구미동차고지"},{"id":"107000005","no":"9409","s":"구미동차고지","e":"오리역"},{"id":"100100400","no":"9707","s":"가좌동종점","e":"두신마을"},{"id":"100100607","no":"9711","s":"일산동부경찰서(중)","e":"일산동부경찰서(중)"},{"id":"100100593","no":"N13","s":"온곡중학교.노원중앙도서관","e":"상계주공7단지.광림교회앞"},{"id":"100100610","no":"N15","s":"우이동성원아파트","e":"우이동도선사입구.북한산우이역"},{"id":"100100592","no":"N16","s":"도봉산역광역환승센터","e":"도봉산역광역환승센터"},{"id":"100100586","no":"N26","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"100100591","no":"N30","s":"강동공영차고지","e":"강동공영차고지"},{"id":"104000011","no":"N31","s":"강동공영차고지","e":"강동공영차고지"},{"id":"100100585","no":"N37","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"117000002","no":"N51","s":"범일운수종점","e":"범일운수종점"},{"id":"124000016","no":"N6000","s":"인천공항T2-B1층","e":"인천공항T2-B1층"},{"id":"115000009","no":"N6002","s":"청량리역","e":"청량리역"},{"id":"100100589","no":"N61","s":"양천공영차고지","e":"양천공영차고지"},{"id":"100100588","no":"N62","s":"양천공영차고지","e":"양천공영차고지"},{"id":"115000010","no":"N64","s":"개화역광역환승센터","e":"개화역광역환승센터"},{"id":"122000004","no":"N6701","s":"인천공항T2-B1층","e":"인천공항T2-B1층"},{"id":"122000006","no":"N6703","s":"인천공항T2-B1층","e":"인천공항T2-B1층"},{"id":"111000017","no":"N72","s":"은평공영차고지","e":"은평권역공영차고지"},{"id":"123000013","no":"N73","s":"복정역환승센터3번승강장","e":"복정역환승주차장"},{"id":"111000016","no":"N75","s":"진관공영차고지","e":"진관공영차고지"},{"id":"122900003","no":"강남01","s":"일원동한솔아파트","e":"푸른마을아파트앞"},{"id":"122900006","no":"강남02","s":"강남구민체육관","e":"강남구민체육관"},{"id":"122900004","no":"강남03","s":"강남데시앙포레정문","e":"강남데시앙포레정문"},{"id":"122900002","no":"강남05","s":"구룡마을","e":"개포래미안포레스트"},{"id":"122900005","no":"강남06","s":"세곡푸르지오","e":"세곡푸르지오"},{"id":"122900007","no":"강남06-1","s":"리엔파크4단지.강남데시앙파크","e":"서울요양원.강남구립행복요양병원"},{"id":"122900010","no":"강남06-2","s":"리엔파크4단지.강남데시앙파크","e":"서울요양원.강남구립행복요양병원"},{"id":"122900001","no":"강남07","s":"서울의료원후문","e":"서울의료원후문"},{"id":"122900008","no":"강남08","s":"신사역1번출구","e":"신사역8번출구.가로수길"},{"id":"122900009","no":"강남10","s":"개포4단지7단지","e":"개포4단지7단지"},{"id":"124900002","no":"강동01","s":"고덕온빛채아파트","e":"고덕풍경채어바니티"},{"id":"124900003","no":"강동02","s":"가래여울","e":"가래여울"},{"id":"124900001","no":"강동05","s":"강동공영차고지","e":"강일리버파크6단지"},{"id":"108900006","no":"강북01","s":"아카데미하우스.통일교육원","e":"아카데미하우스.통일교육원"},{"id":"108900002","no":"강북02","s":"본원정사","e":"본원정사"},{"id":"108900003","no":"강북03","s":"빨래골","e":"빨래골"},{"id":"108900005","no":"강북04","s":"영암마트","e":"율곡어린이놀이터"},{"id":"108900008","no":"강북05","s":"번동초교.솔그린APT.하나은행","e":"번동초교.솔그린APT.하나은행"},{"id":"108900007","no":"강북06","s":"강북보건소앞.번2동주민센터","e":"강북보건소앞.번2동주민센터"},{"id":"108900013","no":"강북08","s":"두산위브아파트","e":"삼각산보건지소"},{"id":"108900004","no":"강북09","s":"현대백화점.E마트.빅토리아호텔","e":"현대백화점.E마트.빅토리아호텔"},{"id":"108900009","no":"강북10","s":"미송경로당","e":"SK아파트벽산아파트상가"},{"id":"108900001","no":"강북11","s":"현대백화점.E마트.빅토리아호텔","e":"현대백화점.E마트.빅토리아호텔"},{"id":"108900012","no":"강북12","s":"삼각산119안전센터","e":"삼각산119안전센터"},{"id":"115900006","no":"강서01","s":"약수터","e":"약수터"},{"id":"115900003","no":"강서02","s":"남부시장","e":"LG주유소"},{"id":"115900004","no":"강서03","s":"약수터","e":"태창아파트"},{"id":"115900001","no":"강서04","s":"염창역1번출구.강서평생학습관","e":"염창역2번출구"},{"id":"115900005","no":"강서05","s":"강서농수산물도매시장","e":"강서면허시험장.메이필드호텔"},{"id":"115900008","no":"강서05-1","s":"다솔마을","e":"송정중학교정문"},{"id":"115900002","no":"강서06","s":"벽산아파트","e":"벽산아파트"},{"id":"115900007","no":"강서07","s":"생태공원","e":"생태공원"},{"id":"120900005","no":"관악01","s":"봉천역","e":"봉천역4번출구"},{"id":"120900011","no":"관악02-1","s":"낙성대역","e":"낙성대역"},{"id":"120900012","no":"관악02-2","s":"낙성대역","e":"낙성대역"},{"id":"120900003","no":"관악03","s":"국사봉","e":"벽산아파트후문.만물슈퍼"},{"id":"120900009","no":"관악04","s":"GS편의점.소망유통","e":"군인아파트"},{"id":"120900010","no":"관악05","s":"현대아파트후문","e":"현대아파트후문"},{"id":"120900004","no":"관악06","s":"보명사.법화사","e":"보명사.법화사"},{"id":"120900006","no":"관악07","s":"청림동푸르지오아파트121동앞","e":"행운동우성아파트109동앞"},{"id":"120900007","no":"관악08","s":"난향동공영차고지","e":"난향동공영차고지"},{"id":"120900002","no":"관악10","s":"아카시아마을.민방위교육장","e":"아카시아마을.민방위교육장"},{"id":"114900004","no":"관악11","s":"봉천역","e":"봉천역"},{"id":"104900005","no":"광진01","s":"정보도서관","e":"정보도서관"},{"id":"104900003","no":"광진02","s":"긴고랑종점","e":"긴고랑종점"},{"id":"104900002","no":"광진03","s":"국립정신건강센터","e":"국립정신건강센터"},{"id":"104900001","no":"광진04","s":"중곡아파트.기점","e":"중곡아파트.기점"},{"id":"104900004","no":"광진05","s":"신자초등학교앞","e":"신자초등학교앞"},{"id":"116900013","no":"구로01","s":"개봉역","e":"개봉역"},{"id":"116900014","no":"구로02","s":"개봉역","e":"개봉역"},{"id":"116900010","no":"구로03","s":"개봉한진아파트.기점","e":"개봉한진아파트.기점"},{"id":"116900011","no":"구로04","s":"천왕이펜하우스5단지입구","e":"천왕이펜하우스6단지"},{"id":"116900009","no":"구로05","s":"오류중학교","e":"오류중학교"},{"id":"116900012","no":"구로06","s":"개봉역","e":"개봉역"},{"id":"116900006","no":"구로07","s":"오류동역2번출구","e":"동부에이스"},{"id":"116900015","no":"구로08","s":"개봉역","e":"개봉역"},{"id":"116900007","no":"구로09","s":"동아1차아파트105동","e":"동아1차아파트105동"},{"id":"116900003","no":"구로10","s":"대림역4번출구","e":"대림역4번출구"},{"id":"116900004","no":"구로11","s":"대림역4번출구","e":"대림역4번출구"},{"id":"116900002","no":"구로12","s":"개봉역.림괄아파트","e":"개봉역"},{"id":"116900001","no":"구로13","s":"구로1동주민센터.연예인APT","e":"구로주공.구일우성APT"},{"id":"116900005","no":"구로14","s":"천왕이펜하우스5단지입구","e":"천왕이펜하우스6단지"},{"id":"116900016","no":"구로15","s":"오류동역.시장입구","e":"미래여성병원"},{"id":"117900008","no":"금천01","s":"독산역","e":"독산역"},{"id":"117900006","no":"금천02","s":"벽산3단지","e":"벽산3단지앞"},{"id":"117900003","no":"금천03","s":"가산디지털단지역2번출구","e":"가산디지털단지역4번출구"},{"id":"117900002","no":"금천04","s":"성채안로입구삼거리(마을)","e":"기아자동차남문.광명역세권1단지후문"},{"id":"117900001","no":"금천05","s":"독산한신코아.한신아파트","e":"독산주공13단지"},{"id":"117900004","no":"금천06","s":"시흥1동공영주차장.금천노인종합복지관","e":"시흥1동공영주차장.금천노인종합복지관"},{"id":"117900007","no":"금천07","s":"시흥1동공영주차장.금천노인종합복지관","e":"시흥1동공영주차장.금천노인종합복지관"},{"id":"117900005","no":"금천08","s":"난곡중학교","e":"난곡중학교"},{"id":"117900010","no":"금천11","s":"산기슭공원","e":"한울중학교"},{"id":"117900012","no":"금천11-1","s":"서울시립금천청소년센터","e":"서울시립금천청소년센터"},{"id":"110900004","no":"노원01","s":"보람사거리","e":"한신3차아파트"},{"id":"110900009","no":"노원02","s":"수락리버시티1단지정문","e":"수락리버시티2단지정문"},{"id":"110900005","no":"노원03","s":"석계역1번출구.A","e":"석계역1번출구.A"},{"id":"110900003","no":"노원05","s":"온곡초등학교","e":"온곡초등학교"},{"id":"110900007","no":"노원08","s":"상계8동주민센터","e":"상계8동주민센터"},{"id":"110900006","no":"노원09","s":"서울특별시기술교육원북부캠퍼스","e":"중계센트럴파크아파트"},{"id":"110900002","no":"노원11","s":"수락현대아파트","e":"수락현대아파트"},{"id":"109900011","no":"노원14","s":"청백아파트1단지","e":"청백아파트종점"},{"id":"109900010","no":"노원15","s":"청백아파트1단지","e":"청백아파트종점"},{"id":"109900001","no":"도봉01","s":"쌍문동우이빌라","e":"법종사"},{"id":"108900010","no":"도봉02","s":"우이동","e":"성원아파트"},{"id":"109900007","no":"도봉03","s":"꽃동네","e":"에덴약국"},{"id":"109900008","no":"도봉04","s":"동익아파트","e":"용호약국"},{"id":"109900004","no":"도봉05","s":"한일병원","e":"한일병원"},{"id":"109900003","no":"도봉06","s":"한일병원","e":"한일병원"},{"id":"109900002","no":"도봉07","s":"도봉여성센터","e":"도봉여성센터"},{"id":"109900006","no":"도봉08","s":"창동역1번출구(도봉방면)","e":"창동농협물류센터"},{"id":"109900005","no":"도봉09","s":"창동역1번출구(도봉방면)","e":"창동역1번출구(도봉방면)"},{"id":"105900003","no":"동대문01","s":"회기역","e":"회기역"},{"id":"105900002","no":"동대문02","s":"회기역","e":"회기역"},{"id":"105900006","no":"동대문03","s":"가든아파트.수사연구소","e":"가든아파트.수사연구소"},{"id":"105900001","no":"동대문05","s":"답십리역","e":"부속상가"},{"id":"100000025","no":"동대문A01","s":"장한평역3번출구","e":"장한평역2번출구"},{"id":"119900007","no":"동작01","s":"달마사.흑석어린이집","e":"동양아파트.달마사"},{"id":"119900013","no":"동작02","s":"사자암","e":"사자암"},{"id":"119900020","no":"동작03","s":"신대방삼거리역","e":"대림초등학교"},{"id":"119900022","no":"동작05","s":"대방역","e":"공군호텔"},{"id":"119900023","no":"동작05-1","s":"신대방역","e":"신대방1동주민센터"},{"id":"119900014","no":"동작06","s":"이수역","e":"이수역"},{"id":"119900018","no":"동작07","s":"삼성래미안.롯데캐슬","e":"삼성래미안.롯데캐슬"},{"id":"119900009","no":"동작08","s":"행복유치원","e":"행복유치원"},{"id":"119900019","no":"동작09","s":"대림현대아파트.사당3동주민센터","e":"대림현대아파트.사당3동주민센터"},{"id":"119900006","no":"동작10","s":"노들역.노량진교회","e":"본동초등학교"},{"id":"119900011","no":"동작11","s":"사자암","e":"사자암"},{"id":"119900021","no":"동작12","s":"상도4동성문교회.상도어울마당","e":"상도4동성문교회.상도어울마당"},{"id":"120900001","no":"동작13","s":"봉현초등학교","e":"봉천고개.관악현대아파트"},{"id":"119900012","no":"동작14","s":"동양아파트.달마사","e":"달마사.흑석어린이집"},{"id":"119900010","no":"동작15","s":"자이아파트정문앞","e":"자이아파트정문앞"},{"id":"119900017","no":"동작16","s":"삼성래미안.롯데캐슬","e":"삼성래미안.롯데캐슬"},{"id":"119900016","no":"동작17","s":"극동상가","e":"테니스장.우성아파트304동"},{"id":"119900015","no":"동작18","s":"극동상가","e":"테니스장.우성아파트304동"},{"id":"119900008","no":"동작19","s":"사자암","e":"당곡중.고등학교"},{"id":"119900001","no":"동작20","s":"자이아파트정문앞","e":"자이아파트정문앞"},{"id":"119900024","no":"동작21","s":"달마사","e":"동양아파트.달마사"},{"id":"101900003","no":"동작A01","s":"숭실대중문앞","e":"숭실대중문앞"},{"id":"102900001","no":"마포01","s":"산천동리버힐삼성아파트","e":"원효2동주민센터"},{"id":"113900005","no":"마포02","s":"청암대","e":"한강타운.우성아파트16동앞"},{"id":"113900002","no":"마포03","s":"아현전철역","e":"아현전철역"},{"id":"113900011","no":"마포05","s":"홍대입구역","e":"홍대입구역"},{"id":"113900012","no":"마포06","s":"홍대입구역","e":"홍대입구역"},{"id":"113900010","no":"마포07","s":"양화진성지","e":"다운교회"},{"id":"113900013","no":"마포08","s":"월드컵파크7단지","e":"상지초등학교"},{"id":"113900015","no":"마포09","s":"망원유수지.마포구민체육센터","e":"망원유수지.마포구민체육센터"},{"id":"113900008","no":"마포10","s":"신촌역","e":"신촌역"},{"id":"113900004","no":"마포11","s":"신촌역","e":"신촌역"},{"id":"113900003","no":"마포12","s":"신촌역","e":"신촌역"},{"id":"113900007","no":"마포13","s":"신촌역","e":"신촌역"},{"id":"113900014","no":"마포15","s":"월드컵파크7단지","e":"월드컵파크7단지"},{"id":"113900009","no":"마포16","s":"마포16번종점","e":"마포16번종점"},{"id":"113900001","no":"마포17","s":"공덕시장","e":"공덕전철역"},{"id":"113900016","no":"마포18","s":"상암월드컵파크6.7단지","e":"상암월드컵파크6.7단지"},{"id":"113900017","no":"마포18-1","s":"상암월드컵파크6.7단지","e":"상암월드컵파크6.7단지"},{"id":"113000006","no":"마포순환열차버스","s":"서울월드컵경기장(마포농수산물시장)","e":"서울월드컵경기장(마포농수산물시장)"},{"id":"101000006","no":"상암A21","s":"월드컵경기장남측.월드컵공원","e":"공항철도디지털미디어시티역"},{"id":"101000009","no":"새벽A148","s":"상계역5번출구.상계벽산아파트","e":"상계역5번출구"},{"id":"100000024","no":"새벽A160","s":"도봉산역광역환승센터","e":"도봉산역광역환승센터"},{"id":"101000010","no":"새벽A504","s":"금천구청.금천경찰서","e":"금천구청.금천경찰서"},{"id":"100000028","no":"새벽A741","s":"구파발역입구","e":"구파발역입구"},{"id":"112900010","no":"서대문01","s":"삼성빌라","e":"삼성빌라"},{"id":"112900014","no":"서대문02대","s":"뜨란채아파트101동","e":"뜨란채아파트101동"},{"id":"112900015","no":"서대문02소","s":"뜨란채아파트101동","e":"뜨란채아파트101동"},{"id":"112900004","no":"서대문03","s":"홍은2동주민센터","e":"두산아파트"},{"id":"112900011","no":"서대문04","s":"궁동근린공원입구","e":"궁동근린공원입구"},{"id":"112900009","no":"서대문05","s":"북아현삼거리","e":"북아현삼거리"},{"id":"112900007","no":"서대문06","s":"두산아파트","e":"두산아파트"},{"id":"112900003","no":"서대문07","s":"개미마을","e":"개미마을"},{"id":"100900012","no":"서대문08","s":"상명대정문","e":"상명대정문"},{"id":"112900012","no":"서대문09대","s":"가산빌라","e":"백련교.홍제폭포"},{"id":"112900013","no":"서대문09소","s":"풍진베이스타운.안산자락길입구","e":"명진아트빌라"},{"id":"112900001","no":"서대문10","s":"백련사","e":"백련사"},{"id":"112900006","no":"서대문11","s":"홍은동국민주택","e":"홍은동국민주택"},{"id":"112900002","no":"서대문12","s":"동원베네스트주차장.두산위브입구","e":"동원베네스트주차장.두산위브입구"},{"id":"112900005","no":"서대문13","s":"홍은동국민주택","e":"홍은동국민주택"},{"id":"112900008","no":"서대문14","s":"정원슈퍼","e":"정원슈퍼"},{"id":"108900014","no":"서대문15","s":"증산역(증산2교)","e":"증산2교"},{"id":"100000027","no":"서대문A01","s":"서대문구청.보건소.구의회","e":"서대문구청.보건소.구의회"},{"id":"107000006","no":"서울01출근","s":"동탄9동행정복지센터","e":"지하철2호선강남역"},{"id":"107000010","no":"서울01퇴근","s":"신논현역.유화빌딩","e":"동탄9동행정복지센터"},{"id":"115000011","no":"서울02출근","s":"(임시)풍무홈플러스","e":"김포공항역3번출구"},{"id":"115000013","no":"서울02퇴근","s":"김포공항역3번출구","e":"수행마을.홈플러스"},{"id":"111000020","no":"서울03출근","s":"책향기마을10단지11단지","e":"홍대입구역"},{"id":"111000024","no":"서울03퇴근","s":"홍대입구역","e":"책향기마을10단지11단지"},{"id":"111000021","no":"서울04출근","s":"도래울마을1단지","e":"가양역8번출구.마포중고교"},{"id":"111000025","no":"서울04퇴근","s":"가양역7번출구.마포중고교","e":"도래울마을1단지"},{"id":"109000002","no":"서울05출근","s":"율정마을7.8단지","e":"도봉산역광역환승센터"},{"id":"109000004","no":"서울05퇴근","s":"도봉산역광역환승센터","e":"율정마을7.8단지"},{"id":"113000005","no":"서울06출근","s":"오포베르빌아파트","e":"지하철2호선강남역"},{"id":"109000005","no":"서울06퇴근","s":"지하철2호선강남역","e":"오포베르빌아파트"},{"id":"102000001","no":"서울07출근","s":"양재역.서초문화예술회관","e":"기업성장센터"},{"id":"106000005","no":"서울07퇴근","s":"기업성장센터","e":"양재역"},{"id":"111000023","no":"서울08출근","s":"화정역3호선","e":"디지털미디어시티역"},{"id":"111000026","no":"서울08퇴근","s":"디지털미디어시티역","e":"화정역4번출구"},{"id":"110000007","no":"서울09출근","s":"민락교","e":"노원역9번출구"},{"id":"110000008","no":"서울09퇴근","s":"노원역1번출구","e":"민락교"},{"id":"109000003","no":"서울10출근","s":"현대힐스테이트아파트","e":"도봉산역광역환승센터"},{"id":"109000006","no":"서울10퇴근","s":"도봉산역","e":"현대힐스테이트아파트"},{"id":"121900009","no":"서초01","s":"롯데캐슬아파트","e":"래미안신반포리오센트아파트"},{"id":"121900008","no":"서초02","s":"교대역6번출구","e":"교대역6번출구"},{"id":"121900005","no":"서초03","s":"교대역5번출구","e":"교대역13번출구"},{"id":"119900003","no":"서초05","s":"정금마을.방배경찰서","e":"정금마을"},{"id":"119900002","no":"서초06","s":"정금마을.방배경찰서","e":"정금마을"},{"id":"121900011","no":"서초07","s":"내방역8번출구","e":"서리풀터널입구"},{"id":"121900002","no":"서초08","s":"서울추모공원","e":"서울추모공원"},{"id":"121900007","no":"서초09","s":"헌인마을.서울농업기술센터","e":"헌인마을.서울농업기술센터"},{"id":"121900003","no":"서초10","s":"서초구민체육센터","e":"서초구민체육센터"},{"id":"121900006","no":"서초11","s":"예술의전당","e":"예술의전당"},{"id":"121900013","no":"서초13","s":"이수역2번출구","e":"이수역4번출구"},{"id":"121900010","no":"서초14","s":"이수역2번출구","e":"이수역4번출구"},{"id":"121900012","no":"서초15","s":"롯데캐슬헤론아파트","e":"롯데캐슬헤론아파트"},{"id":"119900005","no":"서초16","s":"정금마을.방배경찰서","e":"정금마을"},{"id":"119900004","no":"서초17","s":"사당역10번출구","e":"사당역12번출구"},{"id":"121900016","no":"서초18","s":"선바위역1번출구","e":"선바위역2번출구"},{"id":"121900015","no":"서초18-1","s":"호반써밋서초파크뷰","e":"호반써밋서초파크뷰"},{"id":"121900004","no":"서초20","s":"서초더샵포레","e":"서초더샵포레"},{"id":"121900001","no":"서초21","s":"염곡동구룡사","e":"한국도로교통공단서울지부.코트라"},{"id":"121900014","no":"서초22","s":"남부터미널","e":"남부터미널"},{"id":"103900003","no":"성동01","s":"옥수역4번출구.한강버스선착장","e":"옥수역4번출구.한강버스선착장"},{"id":"103900004","no":"성동02","s":"청계현대아파트","e":"청계현대아파트"},{"id":"103900011","no":"성동03-1","s":"신금호역","e":"신금호역"},{"id":"103900012","no":"성동03-2","s":"왕십리풍림아이원아파트102동","e":"왕십리풍림아이원아파트102동"},{"id":"101900001","no":"성동05","s":"응봉근린공원.금호산","e":"응봉근린공원.금호산"},{"id":"103900002","no":"성동08","s":"금호역","e":"금호역"},{"id":"103900001","no":"성동09","s":"옥수역.한강버스선착장","e":"옥수역.한강버스선착장"},{"id":"103900008","no":"성동10","s":"경동초등학교입구","e":"경동초등학교입구"},{"id":"103900009","no":"성동12","s":"옥수역.한강버스선착장","e":"옥수역.한강버스선착장"},{"id":"103900010","no":"성동13","s":"옥수역5.6번출구.한강버스선착장","e":"옥수역5.6번출구.한강버스선착장"},{"id":"103900013","no":"성동14","s":"응봉역.광희중학교","e":"응봉역.광희중학교"},{"id":"103900014","no":"성동15","s":"대우아파트관리실","e":"대우아파트관리실"},{"id":"107900008","no":"성북01","s":"한신113동앞","e":"동구고등학교후문"},{"id":"107900003","no":"성북02","s":"한성대정문","e":"한성대정문"},{"id":"107900002","no":"성북03","s":"삼선푸르지오APT앞","e":"삼선초교"},{"id":"107900005","no":"성북04","s":"성신여대입구역3번출구","e":"성신여대입구역3번출구"},{"id":"107900011","no":"성북05","s":"정릉2동주민센터","e":"정릉2동주민센터"},{"id":"107900012","no":"성북06","s":"산림초소","e":"넓은마당"},{"id":"107900013","no":"성북07","s":"정릉4동종점","e":"오렌지마트"},{"id":"107900007","no":"성북08","s":"신안APT.길음초등학교","e":"신안APT.길음초등학교"},{"id":"107900006","no":"성북09","s":"신안APT.길음초등학교","e":"푸르지오211동"},{"id":"107900018","no":"성북10","s":"장위중학교","e":"하트마트편의점"},{"id":"107900004","no":"성북12","s":"월곡중학교","e":"월곡중학교"},{"id":"107900001","no":"성북13","s":"동방주택","e":"슈퍼앞"},{"id":"107900010","no":"성북14-1","s":"북서울꿈의숲","e":"꿈의숲코오롱하늘채아파트"},{"id":"107900016","no":"성북14-2","s":"래미안장위퍼스트하이아파트","e":"간대어린이공원"},{"id":"107900015","no":"성북15","s":"고려아파트","e":"고려슈퍼"},{"id":"105900004","no":"성북20","s":"고려대역3번출구","e":"고려대역3번출구"},{"id":"105900005","no":"성북21","s":"고려대역3번출구","e":"고려대역3번출구"},{"id":"107900009","no":"성북22","s":"세계문화유산정릉","e":"세계문화유산정릉"},{"id":"123900001","no":"송파01","s":"송파호반베르디움더퍼스트","e":"송파호반베르디움더퍼스트"},{"id":"123900002","no":"송파02","s":"하남시위례도서관","e":"송파위례리슈빌"},{"id":"123900003","no":"송파03","s":"수서역","e":"수서역"},{"id":"101000005","no":"심야A21","s":"동대문역.흥인지문","e":"동대문역.흥인지문"},{"id":"114900001","no":"양천01","s":"강서보건소.9호선등촌역","e":"강서보건소.9호선등촌역"},{"id":"114900002","no":"양천02","s":"강서보건소.9호선등촌역","e":"강서보건소.9호선등촌역"},{"id":"114900003","no":"양천03","s":"신정이펜하우스1단지","e":"신정이펜하우스1단지.새금성교회"},{"id":"116900018","no":"양천04","s":"신도림동아3차아파트","e":"동아1차아파트102동"},{"id":"116900008","no":"영등포01","s":"신도림역2번출구","e":"신도림역2번출구"},{"id":"118900004","no":"영등포02","s":"한국환경수도연구원","e":"한국환경수도연구원"},{"id":"118900005","no":"영등포03","s":"현대2.3차아파트","e":"현대3차유원아파트"},{"id":"118900001","no":"영등포04","s":"대림역5번출구","e":"대림역9번출구"},{"id":"118900006","no":"영등포05","s":"당산역","e":"당산역"},{"id":"118900003","no":"영등포06","s":"대방역","e":"대방역"},{"id":"118900002","no":"영등포07","s":"대방역","e":"대방역"},{"id":"118900007","no":"영등포08","s":"영등포푸르지오후문","e":"영등포푸르지오후문"},{"id":"116900017","no":"영등포09","s":"신도림역","e":"신도림역2번출구"},{"id":"118900008","no":"영등포10","s":"대방역","e":"대방역"},{"id":"118900009","no":"영등포11","s":"대방역","e":"대방역"},{"id":"114900006","no":"영등포12","s":"신도림역","e":"신도림역"},{"id":"114900005","no":"영등포13","s":"대방천사거리.동작세무서","e":"보라매역4번출구"},{"id":"102900003","no":"용산01","s":"순천향병원","e":"순천향병원"},{"id":"102900002","no":"용산02","s":"한신아파트","e":"한신아파트"},{"id":"102900004","no":"용산03","s":"하얏트호텔","e":"하얏트호텔"},{"id":"101900002","no":"용산04","s":"서울역서부","e":"서울역서부"},{"id":"111900003","no":"은평02","s":"상신초교.두산.한신아파트","e":"상신초교.두산.한신아파트"},{"id":"111900014","no":"은평03-1","s":"12번지건영아파트","e":"12번지건영아파트"},{"id":"111900015","no":"은평03-2","s":"은평성모병원","e":"은평성모병원"},{"id":"111900004","no":"은평04","s":"경향파크아파트","e":"대동슈퍼"},{"id":"111900005","no":"은평05","s":"힐스테이트302동앞","e":"힐스테이트302동앞"},{"id":"111900007","no":"은평06","s":"불광동팀수양관","e":"불광중학교"},{"id":"111900006","no":"은평07","s":"삼성래미안아파트","e":"행정연구원건너편"},{"id":"111900011","no":"은평08-1","s":"힐스테이트302동앞","e":"힐스테이트302동앞"},{"id":"111900012","no":"은평08-2","s":"힐스테이트302동앞","e":"힐스테이트302동앞"},{"id":"111900009","no":"은평09","s":"대림e편한세상1단지","e":"대림e편한세상1단지"},{"id":"111900010","no":"은평10","s":"숭실고등학교","e":"숭실고등학교입구"},{"id":"100900006","no":"종로01","s":"아름다운가게.정독도서관","e":"아름다운가게.정독도서관"},{"id":"100900008","no":"종로02","s":"성균관대학교","e":"성균관대학교"},{"id":"100900010","no":"종로03","s":"낙산공원","e":"낙산공원"},{"id":"100900011","no":"종로05","s":"서대문역3번출구","e":"서대문역3번출구"},{"id":"100900004","no":"종로07","s":"성균관대운동장","e":"600주년기념관"},{"id":"100900005","no":"종로08","s":"명륜3가종점","e":"샘미용실.종로구청소년상담복지센터"},{"id":"100900003","no":"종로09","s":"수성동계곡","e":"수성동계곡"},{"id":"100900007","no":"종로11","s":"삼청공원","e":"삼청공원삼거리.옥호정터"},{"id":"100900009","no":"종로12","s":"서울대학교병원현관.암병원현관","e":"혜화역3번출구.서울대병원입구"},{"id":"100900002","no":"종로13","s":"평창파출소","e":"화정박물관"},{"id":"106900001","no":"중랑01","s":"중화동종점","e":"중화동종점"},{"id":"106900002","no":"중랑02","s":"진로아파트앞.용마산동행길.종점","e":"진로아파트앞.용마산동행길.종점"},{"id":"100000026","no":"청계A01","s":"청계광장","e":"청계광장"},{"id":"100000020","no":"청와대A01","s":"경복궁역(효자로입구)","e":"효자로입구(가상)"},{"id":"103000003","no":"한강마곡","s":"발산역7번출구","e":"발산역7번출구"},{"id":"123000021","no":"한강버스(동부압구정)","s":"한강버스.잠실선착장","e":"한강버스.잠실선착장"},{"id":"123000024","no":"한강버스(동부옥수)","s":"한강버스.잠실선착장","e":"한강버스.잠실선착장"},{"id":"123000023","no":"한강버스(서부)","s":"한강버스.마곡선착장","e":"한강버스.마곡선착장"},{"id":"103000005","no":"한강잠실","s":"잠실종합운동장","e":"잠실종합운동장"}];
+
+/* TAGO 도시 목록 (서울은 TAGO 미제공 — 서울 검색은 항상 SEOUL 백엔드로 병행) */
+const CITY_CODES = [
+  { code: "23", name: "인천" },
+  { code: "31010", name: "수원" },
+  { code: "31020", name: "성남" },
+  { code: "31100", name: "고양" },
+  { code: "31220", name: "용인" },
+];
+const cityName = code => CITY_CODES.find(c => c.code === String(code))?.name || "수도권";
+function seoulTypeByNo(no) {
+  const s = String(no);
+  if (/^N/i.test(s)) return "심야";
+  if (/^9\d{3}/.test(s)) return "광역";
+  if (/^\d{4}$/.test(s)) return "지선";
+  if (/^\d{3}$/.test(s)) return "간선";
+  if (/^0\d$/.test(s)) return "순환";
+  return "서울";
+}
+
+function buildFetchUrl(family, endpoint, params, via, key) {
+  const extra = family === "tago"
+    ? { _type: "json", numOfRows: "200", pageNo: "1" }
+    : { resultType: "json" };
+  const sp = new URLSearchParams({ ...params, ...extra });
+  let qs = sp.toString();
+  // 발급 키가 이미 URL 인코딩된 형태(% 포함)면 그대로, 아니면 인코딩해서 붙인다
+  if (key) qs += "&serviceKey=" + (key.includes("%") ? key : encodeURIComponent(key));
+  const upstream = endpoint + "?" + qs;
+  if (via === "relay") {
+    // 공용 CORS 릴레이 — 서울 API(HTTP)를 HTTPS 페이지에서 부를 폴백. TAGO는 direct에서 끝난다(HTTPS+CORS)
+    return "https://api.allorigins.win/raw?url=" + encodeURIComponent(upstream);
+  }
+  return upstream;
+}
+
+/* 일일 호출량 추적 */
+function bumpUsage() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!CONFIG.usage || CONFIG.usage.date !== today) CONFIG.usage = { date: today, calls: 0 };
+  CONFIG.usage.calls++;
+  save();
+}
+function todayCalls() {
+  const today = new Date().toISOString().slice(0, 10);
+  return CONFIG.usage && CONFIG.usage.date === today ? CONFIG.usage.calls : 0;
+}
+
+async function apiGetVia(family, endpoint, params, via, key) {
+  bumpUsage();
+  const res = await fetch(buildFetchUrl(family, endpoint, params, via, key), { cache: "no-store" });
+  if (res.status === 403) throw new Error("미승인 API — data.go.kr에서 해당 서비스 활용신청 필요");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json(); // 게이트웨이 키 오류 시 XML → 여기서 throw → 다음 키로
+
+  if (family === "tago") {
+    const header = data?.response?.header;
+    if (!header) throw new Error("API 응답 형식 오류");
+    if (String(header.resultCode) !== "00") throw new Error(String(header.resultMsg || "API 오류"));
+    const items = data.response.body?.items;
+    if (!items || items === "") return [];
+    let arr = items.item ?? [];
+    if (!Array.isArray(arr)) arr = [arr];
+    return arr;
+  }
+  // SEOUL
+  const header = data.msgHeader || {};
+  if (String(header.headerCd ?? "0") !== "0") throw new Error(String(header.headerMsg || "API 오류"));
+  if (data.msgBody == null) throw new Error(String(header.headerMsg || "API 응답 형식 오류"));
+  let items = data.msgBody.itemList;
+  if (items == null) return [];
+  if (!Array.isArray(items)) items = [items];
+  return items;
+}
+
+async function apiGet(family, endpoint, params) {
+  const key = (CONFIG.serviceKey || "").trim();
+  if (!key) throw new Error("서비스 키가 없어요.");
+  let lastErr;
+  for (const via of ["direct", "relay"]) {
+    try {
+      return await apiGetVia(family, endpoint, params, via, key);
+    } catch (e) {
+      lastErr = e;
+      if (!(e instanceof TypeError)) break; // API가 응답한 오류는 경로를 바꿔도 같다
+    }
+  }
+  if (lastErr instanceof TypeError) throw new Error("연결 실패 — 네트워크 확인");
+  throw lastErr;
+}
+
+/* 서울 노선 검색 — 내장 정적 인덱스에서 즉시 (API 호출 0회) */
+function searchSeoulStatic(query) {
+  const q = String(query || "").toLowerCase();
+  if (!q) return [];
+  return SEOUL_ROUTES
+    .filter(r => r.no.toLowerCase().includes(q))
+    .slice(0, 20)
+    .map(r => ({
+      src: "seoul", cityCode: null, cityName: "서울",
+      routeId: r.id, routeNo: r.no, routeTp: seoulTypeByNo(r.no),
+      start: r.s || "", end: r.e || "",
+    }));
+}
+function mapTagoRoute(r, cityCode) {
+  return {
+    src: "tago", cityCode: String(cityCode), cityName: cityName(cityCode),
+    routeId: String(r.routeid), routeNo: String(r.routeno),
+    routeTp: routeTypeLabel(r.routetp),
+    start: r.startnodenm || "", end: r.endnodenm || "",
+  };
+}
+
+/* 서울(정적 인덱스) + 선택한 TAGO 도시를 합쳐 검색. TAGO 미승인이어도 서울 결과는 나온다 */
+async function searchRoutesAll(cityCode, query) {
+  const out = searchSeoulStatic(query);
+  try {
+    const ta = await apiGet("tago", TAGO_API.routeList, { cityCode, routeNo: query });
+    out.push(...ta.map(r => mapTagoRoute(r, cityCode)));
+  } catch (e) {
+    if (!out.length) throw e; // 서울 결과가 있으면 TAGO 오류는 조용히 무시
+  }
+  return out;
+}
+
+/* 노선의 정류장 목록 (공통 형태: nodeId/name/ord/lat) */
+async function fetchStopsFor(route) {
+  if (route.src === "seoul") {
+    // 정적 스냅샷 (배포본 same-origin). 로컬 file:// 에서는 브라우저 제약으로 실패할 수 있음
+    const res = await fetch(`data/seoul/route-${encodeURIComponent(route.routeId)}.json`, { cache: "no-cache" });
+    if (!res.ok) throw new Error("서울 노선 정류소 데이터를 불러올 수 없어요 (배포 페이지에서 시도)");
+    const items = await res.json();
+    return items.map(s => ({ nodeId: String(s.n), name: s.nm || "", ord: Number(s.o) || 0, lat: Number(s.y) }));
+  }
+  const items = await apiGet("tago", TAGO_API.routeStops, { cityCode: route.cityCode, routeId: route.routeId });
+  return items.map(s => ({ nodeId: String(s.nodeid), name: s.nodenm || "", ord: Number(s.nodeord) || 0, lat: Number(s.gpslati) }));
+}
+
+/* 등록된 워치의 도착 정보 → 공통 arrival 배열 */
+async function fetchArrivalFor(w) {
+  if (w.src === "seoul") {
+    const items = await apiGet("seoul", SEOUL_API.arrival, { stId: w.nodeId, busRouteId: w.routeId, ord: w.ord });
+    return parseSeoulArrival(items[0]);
+  }
+  const items = await apiGet("tago", TAGO_API.arrival, { cityCode: w.cityCode, nodeId: w.nodeId, routeId: w.routeId });
+  return parseTagoArrivals(items);
+}
+
+/* 기본 등록처럼 노선명·정류장명만 아는 항목은 첫 조회 때 실 API로 ID를 확정한다 */
+async function resolveWatch(w) {
+  if (!w.pending) return;
+  let routes;
+  if (w.src === "seoul") {
+    routes = searchSeoulStatic(w.routeName);
+  } else {
+    routes = (await apiGet("tago", TAGO_API.routeList, { cityCode: w.cityCode, routeNo: w.routeName })).map(r => mapTagoRoute(r, w.cityCode));
+  }
+  const r = routes.find(x => x.routeNo === String(w.routeName)) || routes[0];
+  if (!r) throw new Error(`${w.routeName} 노선을 찾을 수 없어요`);
+  const stops = await fetchStopsFor(r);
+  const cand = stops.filter(x => x.name.includes(w.stationName));
+  // 동명 정류장(예: 인천 논현동 vs 서울 논현역)이 여럿이면 힌트 위도에 가장 가까운 것
+  let s = cand[0];
+  if (cand.length > 1 && Number.isFinite(Number(w.hintLat))) {
+    s = cand.reduce((best, x) =>
+      Math.abs(x.lat - w.hintLat) < Math.abs(best.lat - w.hintLat) ? x : best);
+  }
+  if (!s) throw new Error(`${w.routeName} 노선이 '${w.stationName}' 정류장에 서지 않아요`);
+  w.routeId = r.routeId;
+  w.routeType = r.routeTp;
+  w.color = routeColor(w.routeType);
+  w.nodeId = s.nodeId;
+  w.stationName = s.name;
+  w.ord = s.ord || 1;
+  w.pending = false;
+  save();
+}
+
+/* ========================================================
+   응답 파싱 — TAGO: 버스 한 대당 item 하나(숫자 필드). 서울: item 하나에 1·2번째 버스.
+======================================================== */
+function parseTagoArrivals(items) {
+  return items
+    .map(it => {
+      const sec = Number(it.arrtime);
+      const stops = Number(it.arrprevstationcnt);
+      return {
+        remainSec: Number.isFinite(sec) ? sec : null,
+        remainStops: Number.isFinite(stops) ? stops : null,
+        isLast: false,
+        special: null,
+        raw: "",
+      };
+    })
+    .filter(a => a.remainSec != null)
+    .sort((a, b) => a.remainSec - b.remainSec)
+    .map(a => (a.remainSec <= 30
+      ? { ...a, special: "arriving", remainSec: 0, remainStops: 0 }
+      : a));
+}
+
+function parseSeoulArrival(item) {
+  if (!item) return [];
+  const one = seq => {
+    const msg = item[`arrmsg${seq}`] || "";
+    const tf = item[`traTime${seq}`];
+    const t = Number(tf);
+    let special = null;
+    if (/곧\s*도착/.test(msg) || item[`isArrive${seq}`] === "1") special = "arriving";
+    else if (/출발\s*대기/.test(msg)) special = "wait";
+    else if (/운행\s*종료/.test(msg) || (!msg && (tf == null || tf === ""))) special = "ended";
+    const remainSec = special === "arriving" ? 0
+      : (tf != null && tf !== "" && Number.isFinite(t) ? t : null);
+    const m = msg.match(/(\d+)\s*번째\s*전/);
+    return {
+      remainSec,
+      remainStops: special === "arriving" ? 0 : (m ? Number(m[1]) : null),
+      isLast: item[`isLast${seq}`] === "1",
+      special,
+      raw: msg,
+    };
+  };
+  return [one(1), one(2)].filter(a => a.remainSec != null || a.special);
+}
+
+/* ========================================================
+   활성 시간대
+======================================================== */
+function isActiveWindow(now = new Date()) {
+  const [sh, sm] = CONFIG.activeStart.split(":").map(Number);
+  const [eh, em] = CONFIG.activeEnd.split(":").map(Number);
+  if (![sh, sm, eh, em].every(Number.isFinite)) return true; // 시간 미설정 시 항상 활성
+  const day = now.getDay();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const start = sh * 60 + sm, end = eh * 60 + em;
+  if (start === end) return CONFIG.activeDays.includes(day);
+  if (start < end) return CONFIG.activeDays.includes(day) && cur >= start && cur < end;
+  // 자정을 넘기는 시간대: 새벽 꼬리는 전날 요일 기준
+  const prevDay = (day + 6) % 7;
+  return (cur >= start && CONFIG.activeDays.includes(day))
+      || (cur < end && CONFIG.activeDays.includes(prevDay));
+}
+
+/* ========================================================
+   노선 색상 — TAGO routetp는 사람이 읽는 문자열("광역버스" 등)
+======================================================== */
+function routeColor(t) {
+  const s = String(t || "");
+  if (/광역|직행|급행|좌석/.test(s)) return "#e51937";
+  if (/마을|순환/.test(s)) return "#f99d1c";
+  if (/간선|공항/.test(s)) return "#3d5bab";
+  if (/지선|일반|시내/.test(s)) return "#5bb531";
+  if (/심야/.test(s)) return "#26262f";
+  return "#0a84ff";
+}
+function routeTypeLabel(t) { return String(t || "").replace(/버스$/, "") || "버스"; }
+
+/* ========================================================
+   버스 아이콘 프리셋 (SVG)
+======================================================== */
+const BUS_ICONS = {
+  "preset-1": `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="10" width="28" height="18" rx="4" fill="currentColor"/>
+    <rect x="9" y="13" width="9" height="7" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <rect x="21" y="13" width="9" height="7" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <rect x="9" y="22" width="21" height="3" rx="1" fill="rgba(0,0,0,0.25)"/>
+    <circle cx="12" cy="30" r="3" fill="#222"/><circle cx="12" cy="30" r="1.3" fill="#eee"/>
+    <circle cx="28" cy="30" r="3" fill="#222"/><circle cx="28" cy="30" r="1.3" fill="#eee"/>
+  </svg>`,
+  "preset-2": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 12 L32 12 Q36 12 36 16 L36 26 Q36 30 32 30 L8 30 Q4 30 4 26 L4 16 Q4 12 8 12 Z" fill="currentColor"/>
+    <rect x="7" y="15" width="26" height="6" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+    <circle cx="12" cy="30" r="3" fill="#111"/>
+    <circle cx="28" cy="30" r="3" fill="#111"/>
+    <rect x="7" y="24" width="4" height="2" fill="rgba(255,255,255,0.35)"/>
+    <rect x="29" y="24" width="4" height="2" fill="rgba(255,255,255,0.35)"/>
+  </svg>`,
+  "preset-3": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="8" width="32" height="22" rx="6" fill="currentColor"/>
+    <rect x="8" y="12" width="24" height="8" rx="2" fill="rgba(255,255,255,0.85)"/>
+    <rect x="8" y="22" width="24" height="2" fill="rgba(0,0,0,0.28)"/>
+    <circle cx="11" cy="32" r="2.5" fill="#111"/>
+    <circle cx="29" cy="32" r="2.5" fill="#111"/>
+  </svg>`,
+  "preset-4": `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5" y="14" width="30" height="14" rx="3" fill="currentColor"/>
+    <rect x="8" y="16" width="10" height="6" fill="rgba(255,255,255,0.85)"/>
+    <rect x="20" y="16" width="12" height="6" fill="rgba(255,255,255,0.85)"/>
+    <rect x="5" y="26" width="30" height="1.5" fill="rgba(0,0,0,0.3)"/>
+    <circle cx="12" cy="30" r="2" fill="#111"/>
+    <circle cx="28" cy="30" r="2" fill="#111"/>
+  </svg>`,
+};
+
+function busIconHtml() {
+  const v = CONFIG.busIcon || "preset-1";
+  if (v.startsWith("data:")) return `<img alt="bus" src="${escapeHtml(v)}" />`;
+  return BUS_ICONS[v] || BUS_ICONS["preset-1"];
+}
+
+/* ========================================================
+   시나리오 미리보기 (개발자) — 데모 DOM이 없으면 모두 no-op
+======================================================== */
+const IS_DEV = () => !!$("demo-bar");
+
+const DEMO_SCENARIOS = {
+  far:      () => ({ remainSec: 8 * 60 + 20, remainStops: 6 }),
+  near:     () => ({ remainSec: 3 * 60 + 12, remainStops: 3 }),
+  arriving: () => ({ special: "arriving", remainSec: 0, remainStops: 0 }),
+  leave:    () => ({ remainSec: 295, remainStops: 3 }),
+  missed:   () => ({ remainSec: 90, remainStops: 1 }),
+  ended:    () => ({ special: "ended" }),
+};
+
+function demoArrival(v) {
+  return {
+    remainSec: v.remainSec ?? null,
+    remainStops: v.remainStops ?? null,
+    isLast: false,
+    special: v.special || null,
+    raw: "",
+  };
+}
+
+function setDemo(scn) {
+  if (STATE.demoTimer) { clearInterval(STATE.demoTimer); STATE.demoTimer = null; }
+  STATE.demo = scn === "live" ? null : scn;
+  document.querySelectorAll("#demo-bar button").forEach(b =>
+    b.classList.toggle("on", b.dataset.scn === scn));
+
+  if (!STATE.demo) {
+    STATE.demoArrivals = null;
+    setStatus("ok", "실시간");
+    renderList();
+    refreshAll(true);
+    return;
+  }
+
+  if (scn === "play") {
+    // 접근 전체 과정을 압축 재생
+    let sec = 11 * 60;
+    const step = () => {
+      sec -= 18;
+      if (sec <= -40) sec = 11 * 60;
+      const v = sec <= 25
+        ? { special: "arriving", remainSec: 0, remainStops: 0 }
+        : { remainSec: Math.max(0, sec), remainStops: clamp(Math.ceil(sec / 85), 1, 8) };
+      STATE.demoArrivals = [demoArrival(v)];
+      STATE.demoFetchedAt = Date.now();
+      const card = document.querySelector(".bus-card");
+      if (card) updateCardDynamic(card, CONFIG.watch);
+    };
+    STATE.demoArrivals = [demoArrival({ remainSec: sec, remainStops: 8 })];
+    STATE.demoFetchedAt = Date.now();
+    STATE.demoTimer = setInterval(step, 500);
+  } else {
+    STATE.demoArrivals = [demoArrival(DEMO_SCENARIOS[scn]())];
+    STATE.demoFetchedAt = Date.now();
+  }
+  const label = document.querySelector(`#demo-bar [data-scn="${scn}"]`)?.textContent || scn;
+  setStatus("ok", "미리보기 · " + label);
+  renderList();
+}
+
+/* 현재 표시할 도착 데이터 (데모 우선) */
+function currentArrivals() {
+  if (STATE.demo) return { arrivals: STATE.demoArrivals || [], fetchedAt: STATE.demoFetchedAt };
+  return { arrivals: STATE.arrivals, fetchedAt: STATE.fetchedAt };
+}
+
+/* ========================================================
+   페이지 전환
+======================================================== */
+function showPage(name) {
+  for (const p of ["list", "settings", "help"]) {
+    const page = $("page-" + p), btn = $("btn-" + p);
+    if (page) page.style.display = (p === name) ? "" : "none";
+    if (btn) btn.classList.toggle("active", p === name);
+  }
+}
+
+/* ========================================================
+   상태바
+======================================================== */
+function setStatus(kind, text) {
+  const dot = $("status-dot");
+  dot.classList.remove("on", "err");
+  if (kind === "ok" || kind === "loading") dot.classList.add("on");
+  if (kind === "error") dot.classList.add("err");
+  $("status-text").textContent = text;
+  updateActiveBadge();
+}
+function updateActiveBadge() {
+  const badge = $("active-badge");
+  const active = isActiveWindow();
+  badge.textContent = active
+    ? `${CONFIG.activeStart}–${CONFIG.activeEnd}`
+    : `대기 · ${CONFIG.activeStart}–${CONFIG.activeEnd}`;
+  badge.classList.toggle("off", !active);
+}
+function updateUpdatedText() {
+  const el = $("status-updated");
+  const parts = [];
+  if (STATE.lastUpdatedAt) {
+    const sec = Math.round((Date.now() - STATE.lastUpdatedAt) / 1000);
+    parts.push(sec < 5 ? "방금" : `${sec}초 전`);
+  }
+  if (IS_DEV() && todayCalls()) parts.push(`오늘 ${todayCalls()}회`);
+  el.textContent = parts.join(" · ");
+}
+
+/* ========================================================
+   카드 렌더 — 게이지 위 정거장 눈금 8칸
+======================================================== */
+const GAUGE_STOPS = 8; // 마지막 8정거장 구간을 표시
+
+function renderList() {
+  const list = $("bus-list");
+  list.innerHTML = "";
+  const w = CONFIG.watch;
+  if (!w) {
+    list.innerHTML = `
+      <div class="empty-state">
+        아직 등록한 버스가 없어요.
+        <br /><button id="empty-open-settings">버스 등록</button>
+      </div>`;
+    $("empty-open-settings").onclick = () => { showPage("settings"); syncSettingsUI(); };
+    return;
+  }
+  list.appendChild(renderCard(w));
+}
+
+function renderCard(w) {
+  const { arrivals, fetchedAt } = currentArrivals();
+  const elapsed = fetchedAt ? (Date.now() - fetchedAt) / 1000 : 0;
+  const a = arrivals[0];
+  const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
+  const t = timeView(a, displaySec);
+  const p = gaugeProgress(a, displaySec) * 100;
+
+  const card = document.createElement("div");
+  card.className = "bus-card";
+  card.style.setProperty("--rc", w.color || routeColor(w.routeType));
+  if (a?.special === "arriving") card.classList.add("arriving");
+
+  // 정거장 눈금: k = 남은 정거장 수가 k일 때의 지점 (k=7..1), 도착점은 별도
+  let stopsHtml = "";
+  for (let k = GAUGE_STOPS - 1; k >= 1; k--) {
+    const pos = ((GAUGE_STOPS - k) / GAUGE_STOPS) * 100;
+    stopsHtml += `<div class="gauge-stop" data-k="${k}" style="left:${pos}%"></div>`;
+  }
+
+  card.innerHTML = `
+    <div class="card-time ${t.cls}" data-time>${t.html}</div>
+    <div class="gauge">
+      <div class="gauge-fill" data-fill style="width:${p}%"></div>
+      ${stopsHtml}
+      <div class="gauge-dest"></div>
+      <div class="gauge-bus" data-bus style="left:${p}%">${busIconHtml()}</div>
+    </div>
+    <div class="card-caption">
+      <span class="route">${escapeHtml(w.routeName)}</span>
+      <span class="station">${escapeHtml(w.stationName)}</span>
+      <span class="stops" data-stops>${a?.remainStops != null ? `<b>${a.remainStops}</b> 정류장` : ""}</span>
+    </div>
+    <div data-leave>${leaveHtml(w, displaySec, a)}</div>`;
+  paintStops(card, p);
+  return card;
+}
+
+function paintStops(card, pPercent) {
+  card.querySelectorAll(".gauge-stop").forEach(dot => {
+    const pos = parseFloat(dot.style.left);
+    dot.classList.toggle("passed", pos <= pPercent);
+  });
+}
+
+function timeView(a, displaySec) {
+  if (!a) return { cls: "state", html: "도착 예정 없음" };
+  if (a.special === "arriving") return { cls: "state hot", html: "곧 도착" };
+  if (a.special === "wait") return { cls: "state", html: "출발 대기" };
+  if (a.special === "ended") return { cls: "state", html: "운행 종료" };
+  if (displaySec == null) return { cls: "state", html: "정보 없음" };
+  const m = Math.floor(displaySec / 60), sec = Math.floor(displaySec % 60);
+  const cls = displaySec < 60 ? "hot" : "";
+  if (m === 0) return { cls, html: `${sec}<span class="unit">초</span>` };
+  return { cls, html: `${m}<span class="unit">분</span>${String(sec).padStart(2, "0")}<span class="unit">초</span>` };
+}
+
+/* 진행률: 정거장 수를 앵커로, 세그먼트 안에서 초 단위 보간(정거장당 ~90초 가정) */
+function gaugeProgress(a, displaySec) {
+  if (!a || a.special === "wait" || a.special === "ended") return 0;
+  if (a.special === "arriving") return 1;
+  if (a.remainStops != null) {
+    const k = clamp(a.remainStops, 0, GAUGE_STOPS);
+    if (k === 0) return 1;
+    const segStart = (GAUGE_STOPS - k) / GAUGE_STOPS;
+    let frac = 0.3;
+    if (displaySec != null) {
+      const per = 90;
+      frac = clamp(1 - (displaySec - (k - 1) * per) / per, 0, 0.95);
+    }
+    return clamp(segStart + frac / GAUGE_STOPS, 0.015, 0.99);
+  }
+  // 정거장 정보가 없으면 12분 창 기준 초 보간
+  if (displaySec != null) {
+    const MAX_SEC = 12 * 60;
+    return clamp(1 - Math.min(displaySec, MAX_SEC) / MAX_SEC, 0.015, 0.99);
+  }
+  return 0;
+}
+
+function leaveHtml(w, displaySec, a) {
+  const walk = Number(w.walkSeconds) || 0;
+  if (!walk || !a || displaySec == null || a.special === "ended" || a.special === "wait") return "";
+  const goSec = displaySec - walk;
+  if (goSec < -30) return `<div class="card-leave missed"><span>이번 버스는 어려워요</span><b>도보 ${escapeHtml(fmtTime(walk))}</b></div>`;
+  if (goSec <= 0) return `<div class="card-leave now"><span>지금 나가세요</span><b>도보 ${escapeHtml(fmtTime(walk))}</b></div>`;
+  return `<div class="card-leave"><span>출발까지</span><b>${escapeHtml(fmtTime(goSec))}</b></div>`;
+}
+
+function updateCardDynamic(card, w) {
+  const { arrivals, fetchedAt } = currentArrivals();
+  const elapsed = fetchedAt ? (Date.now() - fetchedAt) / 1000 : 0;
+  const a = arrivals[0];
+  const displaySec = a && a.remainSec != null ? Math.max(0, a.remainSec - elapsed) : null;
+  const t = timeView(a, displaySec);
+  const timeEl = card.querySelector("[data-time]");
+  timeEl.className = `card-time ${t.cls}`.trim();
+  timeEl.innerHTML = t.html;
+  const p = gaugeProgress(a, displaySec) * 100;
+  card.querySelector("[data-fill]").style.width = p + "%";
+  card.querySelector("[data-bus]").style.left = p + "%";
+  paintStops(card, p);
+  card.querySelector("[data-stops]").innerHTML = a?.remainStops != null ? `<b>${a.remainStops}</b> 정류장` : "";
+  card.querySelector("[data-leave]").innerHTML = leaveHtml(w, displaySec, a);
+  card.classList.toggle("arriving", a?.special === "arriving");
+}
+
+/* 매초 UI만 재계산 (fetch는 별도 주기) */
+function tick() {
+  updateUpdatedText();
+  updateActiveBadge();
+  const card = document.querySelector(".bus-card");
+  if (card && CONFIG.watch) updateCardDynamic(card, CONFIG.watch);
+}
+
+/* ========================================================
+   새로고침
+======================================================== */
+async function refreshAll(manual = false) {
+  if (STATE.demo) return; // 미리보기 중엔 실데이터로 덮어쓰지 않음
+  const w = CONFIG.watch;
+  if (!w) return;
+  const active = isActiveWindow();
+  if (!active && !manual) return;
+  if (manual) {
+    const now = Date.now();
+    if (STATE.lastManualAt && now - STATE.lastManualAt < MANUAL_THROTTLE_MS) {
+      return toast("잠시 후 다시 눌러주세요.", true);
+    }
+    STATE.lastManualAt = now;
+  } else if (todayCalls() >= DAILY_CAP) {
+    setStatus("error", `오늘 호출 ${DAILY_CAP}회 도달 — 자동 갱신 중지`);
+    return;
+  }
+  if (STATE.refreshing) return;
+  STATE.refreshing = true;
+  setStatus("loading", "업데이트 중…");
+
+  try {
+    if (w.pending) await resolveWatch(w);
+    STATE.arrivals = (await fetchArrivalFor(w)).slice(0, 2);
+    STATE.fetchedAt = Date.now();
+    STATE.lastUpdatedAt = Date.now();
+    STATE.lastError = null;
+    setStatus("ok", "최신");
+  } catch (err) {
+    STATE.arrivals = [];
+    STATE.fetchedAt = Date.now();
+    STATE.lastError = err.message;
+    setStatus("error", err.message);
+  } finally {
+    STATE.refreshing = false;
+  }
+  renderList();
+}
+
+/* 적응형 폴링: 도착·출발 임박 60초 · 12분 이내 120초 · 그 외 240초.
+   4명 × 1노선 × 4시간이 키 하나(1,000회/일)를 공유해도 ~600회로 수렴하는 설계.
+   로컬 카운트다운이 매초 돌므로 화면 체감은 끊기지 않는다. */
+function nextPollDelay() {
+  const a = STATE.arrivals[0];
+  if (!a) return POLL.mid;
+  if (a.special === "arriving") return POLL.near;
+  if (a.remainSec == null) return POLL.far;
+  const elapsed = STATE.fetchedAt ? (Date.now() - STATE.fetchedAt) / 1000 : 0;
+  const d = Math.max(0, a.remainSec - elapsed);
+  const walk = Number(CONFIG.watch?.walkSeconds) || 0;
+  const focus = walk ? Math.max(0, d - walk) : d; // 출발 시점 기준
+  if (focus <= 180) return POLL.near;
+  if (focus <= 720) return POLL.mid;
+  return POLL.far;
+}
+
+function scheduleTimers() {
+  if (STATE.refreshTimer) clearTimeout(STATE.refreshTimer);
+  if (STATE.tickTimer) clearInterval(STATE.tickTimer);
+  const loop = () => {
+    STATE.refreshTimer = setTimeout(async () => {
+      if (!document.hidden && isActiveWindow()) await refreshAll(false);
+      loop();
+    }, nextPollDelay() * 1000);
+  };
+  loop();
+  STATE.tickTimer = setInterval(tick, 1000);
+}
+
+/* ========================================================
+   자동완성 UI
+======================================================== */
+const picker = { cityCode: null, pickedRoute: null, pickedStop: null, routeStops: [] };
+
+function bindAutocomplete() {
+  const routeInput = $("new-route");
+  const stationInput = $("new-station");
+
+  let routeSearchSeq = 0;
+  const searchRouteDebounced = debounce(async () => {
+    const q = routeInput.value.trim();
+    const box = $("sug-route");
+    if (!q) { box.style.display = "none"; return; }
+    const my = ++routeSearchSeq;
+    try {
+      const city = $("new-city").value;
+      const items = await searchRoutesAll(city, q);
+      if (my !== routeSearchSeq) return;
+      if (document.activeElement !== routeInput) return;
+      if (!items.length) { box.innerHTML = `<div class="empty">검색 결과 없음</div>`; box.style.display=""; return; }
+      box.innerHTML = "";
+      for (const r of items.slice(0, 30)) {
+        const b = document.createElement("button");
+        b.innerHTML = `<div><span class="swatch" style="background:${routeColor(r.routeTp)}"></span><strong>${escapeHtml(r.routeNo)}</strong> <span class="meta">${escapeHtml(r.cityName)} ${escapeHtml(r.routeTp)} · ${escapeHtml(r.start)}↔${escapeHtml(r.end)}</span></div>`;
+        b.onclick = () => selectRoute(r);
+        box.appendChild(b);
+      }
+      box.style.display = "";
+    } catch (err) {
+      if (my !== routeSearchSeq) return;
+      box.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      box.style.display = "";
+    }
+  }, 250);
+  routeInput.addEventListener("input", searchRouteDebounced);
+  routeInput.addEventListener("focus", searchRouteDebounced);
+  routeInput.addEventListener("blur", () => setTimeout(() => $("sug-route").style.display = "none", 180));
+
+  const searchStopDebounced = debounce(() => renderStationSuggest(stationInput.value.trim()), 100);
+  stationInput.addEventListener("input", searchStopDebounced);
+  stationInput.addEventListener("focus", searchStopDebounced);
+  stationInput.addEventListener("blur", () => setTimeout(() => $("sug-station").style.display = "none", 180));
+}
+
+async function selectRoute(r) {
+  picker.pickedRoute = r;
+  picker.pickedStop = null;
+  $("new-route").value = `${r.routeNo} (${r.cityName} ${r.routeTp})`;
+  $("sug-route").style.display = "none";
+  $("new-station").disabled = false;
+  $("new-station").value = "";
+  $("btn-set-watch").disabled = true;
+  try {
+    setStatus("loading", "노선 정류장 불러오는 중…");
+    const stops = await fetchStopsFor(r);
+    if (picker.pickedRoute !== r) return;
+    picker.routeStops = stops;
+    setStatus("ok", `${stops.length}개 정류장`);
+    $("new-station").focus();
+    renderStationSuggest("");
+  } catch (err) {
+    if (picker.pickedRoute !== r) return;
+    setStatus("error", err.message);
+    toast(err.message, true);
+  }
+}
+function renderStationSuggest(q) {
+  const box = $("sug-station");
+  if (!picker.pickedRoute) { box.style.display = "none"; return; }
+  const qLower = q.toLowerCase();
+  const list = picker.routeStops.filter(s => s.name.toLowerCase().includes(qLower)).slice(0, 60);
+  if (!list.length) { box.innerHTML = `<div class="empty">검색 결과 없음</div>`; box.style.display=""; return; }
+  box.innerHTML = "";
+  for (const s of list) {
+    const b = document.createElement("button");
+    b.innerHTML = `<div><strong>${escapeHtml(s.name)}</strong> <span class="meta">#${escapeHtml(String(s.ord))}</span></div>`;
+    b.onclick = () => selectStop(s);
+    box.appendChild(b);
+  }
+  box.style.display = "";
+}
+function selectStop(s) {
+  picker.pickedStop = s;
+  $("new-station").value = `${s.name} (#${s.ord})`;
+  $("sug-station").style.display = "none";
+  $("btn-set-watch").disabled = false;
+}
+
+/* ========================================================
+   버스 등록 (한 대만 — 등록하면 기존 것을 대체)
+======================================================== */
+function setWatch() {
+  if (!picker.pickedRoute || !picker.pickedStop) return toast("노선과 정류장을 모두 선택하세요.", true);
+  const r = picker.pickedRoute, s = picker.pickedStop;
+  const walk = CONFIG.watch ? (Number(CONFIG.watch.walkSeconds) || 0) : 300;
+  CONFIG.watch = {
+    id: uid(),
+    src: r.src,
+    cityCode: r.cityCode,
+    routeId: r.routeId,
+    routeName: r.routeNo,
+    routeType: r.routeTp,
+    color: routeColor(r.routeTp),
+    nodeId: s.nodeId,
+    stationName: s.name,
+    ord: s.ord || 1,
+    walkSeconds: walk,
+  };
+  save();
+  STATE.arrivals = []; STATE.fetchedAt = 0;
+  picker.pickedRoute = null; picker.pickedStop = null; picker.routeStops = [];
+  $("new-route").value = ""; $("new-station").value = ""; $("new-station").disabled = true;
+  $("btn-set-watch").disabled = true;
+  renderCurrentWatch();
+  renderList();
+  refreshAll(true);
+  toast("등록했어요.");
+}
+
+function renderCurrentWatch() {
+  const el = $("current-watch");
+  const w = CONFIG.watch;
+  if (!w) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div class="current-watch">
+      <div>
+        <div class="r"><span class="swatch" style="background:${escapeHtml(w.color)}"></span>${escapeHtml(w.routeName)}</div>
+        <div class="s">${escapeHtml(w.stationName)} · 도보 ${fmtTime(w.walkSeconds || 0)}</div>
+      </div>
+      <span style="font-size:10px;color:var(--text-mute)">현재 등록</span>
+    </div>`;
+}
+
+/* ========================================================
+   버스 아이콘 갤러리
+======================================================== */
+function renderIconGallery() {
+  const el = $("icon-gallery");
+  el.innerHTML = "";
+  const items = [...Object.keys(BUS_ICONS)];
+  if ((CONFIG.busIcon || "").startsWith("data:")) items.push(CONFIG.busIcon);
+  for (const key of items) {
+    const cell = document.createElement("button");
+    cell.className = "icon-cell" + (CONFIG.busIcon === key ? " active" : "");
+    cell.type = "button";
+    cell.innerHTML = key.startsWith("data:")
+      ? `<img alt="custom" src="${escapeHtml(key)}" />`
+      : BUS_ICONS[key];
+    cell.onclick = () => { CONFIG.busIcon = key; save(); renderIconGallery(); renderList(); };
+    el.appendChild(cell);
+  }
+}
+function bindIconUpload() {
+  $("btn-upload-icon").onclick = () => $("input-icon-file").click();
+  $("input-icon-file").onchange = e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    if (f.size > 300 * 1024) return toast("이미지가 너무 커요 (300KB 이하).", true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      CONFIG.busIcon = String(reader.result);
+      save(); renderIconGallery(); renderList();
+      toast("아이콘을 바꿨어요.");
+    };
+    reader.readAsDataURL(f);
+  };
+  $("btn-reset-icon").onclick = () => { CONFIG.busIcon = "preset-1"; save(); renderIconGallery(); renderList(); };
+}
+
+/* ========================================================
+   요일 선택
+======================================================== */
+const DAY_LABELS = ["일","월","화","수","목","금","토"];
+function renderDayPicker() {
+  const wrap = $("input-days"); wrap.innerHTML = "";
+  DAY_LABELS.forEach((label, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.className = "day-btn" + (CONFIG.activeDays.includes(i) ? " on" : "");
+    b.onclick = () => {
+      CONFIG.activeDays = CONFIG.activeDays.includes(i)
+        ? CONFIG.activeDays.filter(d => d !== i)
+        : [...CONFIG.activeDays, i].sort();
+      save(); renderDayPicker(); updateActiveBadge();
+    };
+    wrap.appendChild(b);
+  });
+}
+
+/* ========================================================
+   설정 UI 동기화
+======================================================== */
+function syncSettingsUI() {
+  const citySel = $("new-city");
+  if (citySel && !citySel.options.length) {
+    for (const c of CITY_CODES) {
+      const o = document.createElement("option");
+      o.value = c.code; o.textContent = c.name;
+      citySel.appendChild(o);
+    }
+    citySel.value = CONFIG.watch?.cityCode || CITY_CODES[0].code;
+  }
+  $("input-start").value = CONFIG.activeStart;
+  $("input-end").value = CONFIG.activeEnd;
+  $("input-walk").value = CONFIG.watch ? Math.round((CONFIG.watch.walkSeconds || 0) / 6) / 10 : 5;
+  renderCurrentWatch();
+  renderDayPicker();
+  renderIconGallery();
+  // 개발자 필드 (사용자 빌드엔 없음)
+  if ($("input-key")) $("input-key").value = CONFIG.serviceKey;
+}
+
+/* ========================================================
+   이벤트 바인딩
+======================================================== */
+function bindEvents() {
+  $("btn-list").onclick = () => showPage("list");
+  $("btn-settings").onclick = () => { showPage("settings"); syncSettingsUI(); };
+  $("btn-refresh").onclick = () => refreshAll(true);
+  if ($("btn-help")) $("btn-help").onclick = () => showPage("help");
+
+  $("input-start").onchange = e => { CONFIG.activeStart = snap10(e.target.value); e.target.value = CONFIG.activeStart; save(); updateActiveBadge(); };
+  $("input-end").onchange = e => { CONFIG.activeEnd = snap10(e.target.value); e.target.value = CONFIG.activeEnd; save(); updateActiveBadge(); };
+  $("input-walk").onchange = e => {
+    if (!CONFIG.watch) return;
+    const min = clamp(Number(e.target.value) || 0, 0, 60);
+    CONFIG.watch.walkSeconds = Math.round(min * 60);
+    e.target.value = min;
+    save(); renderCurrentWatch(); renderList();
+  };
+
+  $("btn-set-watch").onclick = setWatch;
+
+  // 개발자 필드 (사용자 빌드엔 없음)
+  if ($("input-key")) {
+    $("input-key").oninput = e => { CONFIG.serviceKey = e.target.value; save(); };
+  }
+
+  bindAutocomplete();
+  bindIconUpload();
+
+  document.querySelectorAll("#demo-bar button").forEach(b => {
+    b.onclick = () => setDemo(b.dataset.scn);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && isActiveWindow()) refreshAll(false);
+  });
+}
+
+/* ========================================================
+   토스트
+======================================================== */
+let toastTimer = null;
+function toast(msg, err = false) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.toggle("err", err); t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+/* ========================================================
+   초기화
+======================================================== */
+function init() {
+  bindEvents();
+  syncSettingsUI();
+  renderList();
+  updateActiveBadge();
+  scheduleTimers();
+  if (CONFIG.watch) refreshAll(true);
+  else setStatus("", "설정에서 버스를 등록해주세요");
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
