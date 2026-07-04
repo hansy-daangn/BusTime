@@ -28,6 +28,7 @@ jobs:
           fs.writeFileSync('_site/dev.html', h);
           fs.writeFileSync('_site/index.html', h.replace(/<!-- DEV:START -->[\s\S]*?<!-- DEV:END -->/g, ''));
           "
+          if [ -d data ]; then cp -r data _site/data; fi
           touch _site/.nojekyll
 
       # gh-pages 브랜치로 푸시 — 브랜치가 생기면 Pages가 자동 활성화된다
